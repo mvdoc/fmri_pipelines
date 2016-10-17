@@ -431,15 +431,15 @@ def create_apply_transforms_workflow(name='bold2mni'):
     return register
 
 
-def create_filter_pipeline(name='estimate_noise'):
+def create_estimatenoise_workflow(name='estimate_noise'):
     """
-    Builds a pipeline that returns additional regressors from noise estimates.
+    Builds a workflow that returns additional regressors from noise estimates.
     From nipype example rsfmri_vol_surface_preprocessing.py
 
     Parameters
     ----------
         name : str
-            name of the pipeline (default: 'estimate_noise')
+            name of the workflow (default: 'estimate_noise')
 
     Inputs:
         inputspec.source_files :
@@ -687,7 +687,8 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
 def preprocess(data_dir, subject=None, task_id=None, output_dir=None,
                subj_prefix='*', hpcutoff=120., fwhm=6.0,
                num_noise_components=5):
-    """Preprocesses a BIDS dataset
+    """
+    Preprocesses a BIDS dataset
 
     Parameters
     ----------
@@ -716,7 +717,7 @@ def preprocess(data_dir, subject=None, task_id=None, output_dir=None,
     preproc = create_featreg_preproc(whichvol='first')
     registration = create_reg_workflow()
     reslice_bold = create_apply_transforms_workflow()
-    estimate_noise = create_filter_pipeline()
+    estimate_noise = create_estimatenoise_workflow()
 
     """
     Remove the plotting connection so that plot iterables don't propagate
