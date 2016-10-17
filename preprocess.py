@@ -540,14 +540,14 @@ def preprocess(data_dir, subject=None, task_id=None, output_dir=None,
     datasource.inputs.template = '*'
 
     datasource.inputs.field_template = {
-        'anat': '%s/anatomy/highres001.nii.gz',
-        'bold': '%s/BOLD/task%03d_r*/bold.nii.gz',
-        'behav': '%s/model/model%03d/onsets/task%03d_run%03d/cond*.txt'}
+        'anat': 'sub-%s/anat/sub-%s_T1w.nii.gz',
+        'bold': 'sub-%s/func/sub-%s_task-%s_run-*_bold.nii.gz',
+    }
 
     datasource.inputs.template_args = {
-        'anat': [['subject_id']],
-        'bold': [['subject_id', 'task_id']],
-        'behav': [['subject_id', 'model_id', 'task_id', 'run_id']]}
+        'anat': [['subject_id', 'subject_id']],
+        'bold': [['subject_id', 'subject_id', 'task_id']],
+    }
 
     datasource.inputs.sort_filelist = True
 
@@ -556,20 +556,92 @@ def preprocess(data_dir, subject=None, task_id=None, output_dir=None,
     """
     wf = pe.Workflow(name='bids_preprocess')
     wf.connect(infosource, 'subject_id', subjinfo, 'subject_id')
-    wf.connect(infosource, 'model_id', subjinfo, 'model_id')
     wf.connect(infosource, 'task_id', subjinfo, 'task_id')
     wf.connect(infosource, 'subject_id', datasource, 'subject_id')
-    wf.connect(infosource, 'model_id', datasource, 'model_id')
     wf.connect(infosource, 'task_id', datasource, 'task_id')
     wf.connect(subjinfo, 'run_id', datasource, 'run_id')
-    wf.connect([(datasource, preproc, [('bold', 'inputspec.func')]),
-                ])
+    # connect bold to preprocessing pipeline
+    wf.connect(datasource, 'bold', preproc, 'inputspec.func')
 
+    """
+    Get highpass information for preprocessing
+    """
     def get_highpass(TR, hpcutoff):
         return hpcutoff / (2 * TR)
-    gethighpass = pe.Node(niu.Function(input_names=['TR', 'hpcutoff'],
-                                       output_names=['highpass'],
-                                       function=get_highpass),
-                          name='gethighpass')
+    gethighpass = pe.Node(niu.Function(
+        input_names=['TR', 'hpcutoff'],
+        output_names=['highpass'],
+        function=get_highpass),
+        name='gethighpass')
+
     wf.connect(subjinfo, 'TR', gethighpass, 'TR')
     wf.connect(gethighpass, 'highpass', preproc, 'inputspec.highpass')
+
+    """
+    QA: Compute TSNR on realigned data regressing polynomials up to order 2
+    """
+    tsnr = MapNode(
+        TSNR(regress_poly=2),
+        iterfield=['in_file'],
+        name='tsnr')
+    wf.connect(preproc, 'outputspec.realigned_files', tsnr, 'in_file')
+
+    # Compute the median image across runs
+    calc_median = Node(
+        Function(input_names=['in_files'],
+                 output_names=['median_file'],
+                 function=median,
+                 imports=imports),
+        name='median')
+    wf.connect(tsnr, 'detrended_file', calc_median, 'in_files')
+
+    """
+    Setup artifact detection
+    """
+    art = pe.MapNode(
+        interface=ra.ArtifactDetect(
+            use_differences=[True, False],
+            use_norm=True,
+            norm_threshold=1,
+            zintensity_threshold=3,
+            parameter_source='FSL',
+            mask_type='file'),
+        iterfield=['realigned_files', 'realignment_parameters', 'mask_file'],
+        name="art")
+    wf.connect([(preproc, art,
+                 [('outputspec.realigned_files', 'realigned_files'),
+                  ('outputspec.motion_parameters', 'realignment_parameters'),
+                  ('outputspec.mask', 'mask_file')])
+                ])
+
+    """
+    Register anatomical to template
+    """
+    wf.connect(datasource, 'anat',
+               registration, 'inputspec.anatomical_image')
+    registration.inputs.inputspec.target_image = \
+        fsl.Info.standard_image('MNI152_T1_2mm.nii.gz')
+    registration.inputs.inputspec.target_image_brain = \
+        fsl.Info.standard_image('MNI152_T1_2mm_brain.nii.gz')
+    registration.inputs.inputspec.config_file = 'T1_2_MNI152_2mm'
+
+    """
+    QA: Check alignment of bet to anatomical
+    """
+    slicer = pe.Node(
+        fsl.Slicer(image_width=1300, sample_axial=12,
+                   nearest_neighbour=True, threshold_edges=-0.1),
+        name='slicer')
+    wf.connect(datasource, 'anat', slicer, 'in_file')
+    wf.connect(registration, 'outputspec.brain', slicer, 'image_edges')
+
+    """
+    QA: Check alignment of mean bold image to anatomical
+    """
+    slicer_bold = pe.Node(
+        fsl.Slicer(image_width=1300, sample_axial=8,
+                   nearest_neighbour=True, threshold_edges=0.1),
+        name='slicer_bold')
+    wf.connect(registration, 'inputspec.target_image', slicer_bold, 'in_file')
+    wf.connect(registration, 'outputspec.transformed_mean',
+               slicer_bold, 'image_edges')
