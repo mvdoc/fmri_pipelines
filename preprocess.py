@@ -456,8 +456,9 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
     pass
 
 
-def preprocess(data_dir, subject=None, output_dir=None, subj_prefix='*',
-               hpcutoff=120., fwhm=6.0, num_noise_components=5):
+def preprocess(data_dir, subject=None, task_id=None, output_dir=None,
+               subj_prefix='*', hpcutoff=120., fwhm=6.0,
+               num_noise_components=5):
     """Preprocesses a BIDS dataset
 
     Parameters
@@ -467,6 +468,8 @@ def preprocess(data_dir, subject=None, output_dir=None, subj_prefix='*',
         Path to the base data directory
     subject : str
         Subject id to preprocess. If None, all will be preprocessed
+    task_id : str
+        Task to process
     output_dir : str
         Output directory
     subj_prefix : str
@@ -491,6 +494,62 @@ def preprocess(data_dir, subject=None, output_dir=None, subj_prefix='*',
     """
     preproc.disconnect(preproc.get_node('plot_motion'), 'out_file',
                        preproc.get_node('outputspec'), 'motion_plots')
+
+    """
+    Set up bids data specific components
+    """
+    # XXX: check this
+    subjects = sorted([path.split(os.path.sep)[-1] for path in
+                       glob(os.path.join(data_dir, subj_prefix))])
+
+    infosource = pe.Node(
+        niu.IdentityInterface(
+            fields=['subject_id', 'task_id']),
+        name='infosource')
+
+    if len(subject) == 0:
+        infosource.iterables = [('subject_id', subjects),
+                                ('task_id', task_id)]
+    else:
+        infosource.iterables = [('subject_id',
+                                 [subjects[subjects.index(subj)]
+                                  for subj in subject]),
+                                ('task_id', task_id)]
+
+    subjinfo = pe.Node(
+        niu.Function(
+            input_names=['subject_id', 'base_dir',
+                         'task_id'],
+            # XXX: change this according to get_subjectinfo
+            output_names=['run_id', 'conds', 'TR'],
+            function=get_subjectinfo),
+        name='subjectinfo')
+    subjinfo.inputs.base_dir = data_dir
+
+    """
+    Set up DataGrabber to return anat, bold, and behav
+    """
+    # XXX: rename behav to events? or do I even need it?
+    datasource = pe.Node(
+        nio.DataGrabber(
+            infields=['subject_id', 'run_id', 'task_id'],
+            outfields=['anat', 'bold', 'behav']),
+        name='datasource')
+
+    datasource.inputs.base_directory = data_dir
+    datasource.inputs.template = '*'
+
+    datasource.inputs.field_template = {
+        'anat': '%s/anatomy/highres001.nii.gz',
+        'bold': '%s/BOLD/task%03d_r*/bold.nii.gz',
+        'behav': '%s/model/model%03d/onsets/task%03d_run%03d/cond*.txt'}
+
+    datasource.inputs.template_args = {
+        'anat': [['subject_id']],
+        'bold': [['subject_id', 'task_id']],
+        'behav': [['subject_id', 'model_id', 'task_id', 'run_id']]}
+
+    datasource.inputs.sort_filelist = True
 
     """
     Create meta workflow
