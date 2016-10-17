@@ -438,9 +438,28 @@ def create_filter_pipeline(name='estimate_noise'):
 
     Parameters
     ----------
+        name : str
+            name of the pipeline (default: 'estimate_noise')
 
-    Returns
-    -------
+    Inputs:
+        inputspec.source_files :
+            files (filename or list of filenames to estimate noise from)
+        inputspec.motion_parameters :
+            motion parameters
+        inputspec.composite_norm :
+            composite norm
+        inputspec.outliers :
+            outliers for each volume
+        inputspec.detrend_poly :
+            polinomial degree to detrend
+        inputspec.num_components :
+            number of noise components to return
+        inputspec.mask_file :
+            voxel mask to return the components from (e.g., white matter)
+
+    Outputs:
+        outputspec.noise_components :
+            noise components computed within the mask
     """
 
     # Setup some functions
@@ -538,11 +557,6 @@ def create_filter_pipeline(name='estimate_noise'):
         np.savetxt(components_file, components, fmt="%.10f")
         return components_file
 
-    def selectindex(files, idx):
-        import numpy as np
-        from nipype.utils.filemanip import filename_to_list, list_to_filename
-        return list_to_filename(np.array(filename_to_list(files))[idx].tolist())
-
     def rename(in_files, suffix=None):
         from nipype.utils.filemanip import (filename_to_list, split_filename,
                                             list_to_filename)
@@ -561,22 +575,26 @@ def create_filter_pipeline(name='estimate_noise'):
     estimate_noise = pe.Workflow(name=name)
     inputnode = pe.Node(
         interface=niu.IdentityInterface(
-            fields=['motion_parameters',
-                    'composite_norm',
-                    'outliers',
-                    'detrend_poly']),
+            fields=[
+                'source_files'
+                'motion_parameters',
+                'composite_norm',
+                'outliers',
+                'detrend_poly',
+                'num_components',
+                'mask_file'
+            ]),
         name='inputspec')
 
     outputnode = pe.Node(
         interface=niu.IdentityInterface(fields=[
-            'transformed_files_mni',
-            'transformed_files_anat']),
+            'noise_components']),
         name='outputspec')
 
     """
-    Create first node
+    Create motion based filter to obtain residuals
     """
-    create_motionbasedfilter = Node(
+    make_motionbasedfilter = Node(
         Function(
             input_names=['motion_params', 'comp_norm',
                          'outliers', 'detrend_poly'],
@@ -585,7 +603,60 @@ def create_filter_pipeline(name='estimate_noise'):
             imports=imports),
         name='make_motionbasedfilter')
 
-    estimate_noise.connect(inputnode, create_motionbasedfilter)
+    estimate_noise.connect([(inputnode, make_motionbasedfilter,
+                             [('motion_parameters', 'motion_params',
+                               'composite_norm', 'comp_norm',
+                               'outliers', 'outliers',
+                               'detrend_poly', 'detrend_poly')])
+                            ])
+
+    # Link filter
+    motionbasedfilter = MapNode(
+        fsl.GLM(out_f_name='F_mcart.nii.gz',
+                out_pf_name='pF_mcart.nii.gz',
+                demean=True),
+        iterfield=['in_file', 'design', 'out_res_name'],
+        name='motionbasedfilter')
+
+    estimate_noise.connect(inputnode, 'source_files',
+                           motionbasedfilter, 'in_file')
+    estimate_noise.connect(
+        inputnode, ('source_files', rename, '_filtermotart'),
+        motionbasedfilter, 'out_res_name')
+    estimate_noise.connect(make_motionbasedfilter, 'out_files',
+                           motionbasedfilter, 'design')
+
+    """
+    Get noise components on residuals within the provided mask
+    """
+    make_compcorrfilter = MapNode(
+        Function(
+            input_names=[
+                'realigned_file',
+                'mask_file',
+                'num_components',
+                'extra_regressors'],
+            output_names=['out_files'],
+            function=extract_noise_components,
+            imports=imports),
+        iterfield=['realigned_file', 'extra_regressors'],
+        name='make_compcorrfilter')
+
+    estimate_noise.connect(inputnode, 'num_components',
+                           make_compcorrfilter, 'num_components')
+    estimate_noise.connect(make_motionbasedfilter, 'out_files',
+                           make_compcorrfilter, 'extra_regressors')
+    estimate_noise.connect(motionbasedfilter, 'out_res',
+                           make_compcorrfilter, 'realigned_file')
+    # pick only what is in the mask
+    estimate_noise.connect(inputnode, 'mask_file',
+                           make_compcorrfilter, 'mask_file')
+
+    # return what we need
+    estimate_noise.connect(make_compcorrfilter, 'out_files',
+                           outputnode, 'noise_components')
+
+    return estimate_noise
 
 
 def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
@@ -645,6 +716,7 @@ def preprocess(data_dir, subject=None, task_id=None, output_dir=None,
     preproc = create_featreg_preproc(whichvol='first')
     registration = create_reg_workflow()
     reslice_bold = create_apply_transforms_workflow()
+    estimate_noise = create_filter_pipeline()
 
     """
     Remove the plotting connection so that plot iterables don't propagate
@@ -814,7 +886,37 @@ def preprocess(data_dir, subject=None, task_id=None, output_dir=None,
                reslice_bold, 'inputspec.source_files')
     wf.connect([
         (registration, reslice_bold,
+         # use the same mean_image used in registration
          [('inputspec.mean_image', 'inputspec.mean_image'),
           ('outputspec.func2target_transforms', 'inputspec.transforms'),
           ('inputspec.target_image', 'inputspec.target_image')])
                ])
+
+    """
+    Compute noise estimates within the white matter mask
+    """
+    # Use this function to select which mask to use
+    def selectindex(files, idx):
+        from nipype.utils.filemanip import filename_to_list, list_to_filename
+        out_array = np.array(filename_to_list(files))[idx].tolist()
+        return list_to_filename(out_array)
+
+    estimate_noise.inputs.detrend_poly = 2
+    estimate_noise.inputs.num_components = num_noise_components
+    wf.connect(preproc, 'outputspec.motion_parameters',
+               estimate_noise, 'inputspec.motion_parameters')
+    wf.connect(art, 'norm_files',
+               estimate_noise, 'inputspec.composite_norm')
+    wf.connect(art, 'outlier_files',
+               estimate_noise, 'inputspec.outliers')
+    wf.connect(reslice_bold, 'transformed_files_mni',
+               estimate_noise, 'inputspec.source_files')
+    # take only white matter mask
+    wf.connect(
+        registration, ('outputspec.anat_segmented_mni', selectindex, [2]),
+        estimate_noise, 'inputspec.mask_file')
+
+
+    """
+    TODO: Connect to a datasink
+    """
