@@ -82,7 +82,7 @@ def median(in_files):
 
 
 def create_reg_workflow(name='registration'):
-    """Create a FEAT preprocessing workflow
+    """Create a registration workflow using ANTS
 
     Parameters
     ----------
@@ -325,6 +325,8 @@ def create_reg_workflow(name='registration'):
     """
     register.connect(reg, 'warped_image',
                      outputnode, 'anat2target')
+    register.connect(reg, 'composite_transform',
+                     outputnode, 'anat2target_transform')
     register.connect(warpmean, 'output_image',
                      outputnode, 'transformed_mean')
     register.connect(warpall, 'output_image',
@@ -335,8 +337,6 @@ def create_reg_workflow(name='registration'):
                      outputnode, 'func2target_transforms')
     register.connect(mean2anat_mask, 'mask_file',
                      outputnode, 'mean2anat_mask')
-    register.connect(reg, 'composite_transform',
-                     outputnode, 'anat2target_transform')
     register.connect(stripper, 'out_file',
                      outputnode, 'brain')
     register.connect(warpmask, 'output_image',
@@ -431,6 +431,163 @@ def create_apply_transforms_workflow(name='bold2mni'):
     return register
 
 
+def create_filter_pipeline(name='estimate_noise'):
+    """
+    Builds a pipeline that returns additional regressors from noise estimates.
+    From nipype example rsfmri_vol_surface_preprocessing.py
+
+    Parameters
+    ----------
+
+    Returns
+    -------
+    """
+
+    # Setup some functions
+    def build_filter1(motion_params, comp_norm, outliers, detrend_poly=None):
+        """Builds a regressor set comprisong motion parameters, composite norm and
+        outliers
+
+        The outliers are added as a single time point column for each outlier
+
+
+        Parameters
+        ----------
+
+        motion_params: a text file containing motion parameters and its derivatives
+        comp_norm: a text file containing the composite norm
+        outliers: a text file containing 0-based outlier indices
+        detrend_poly: number of polynomials to add to detrend
+
+        Returns
+        -------
+        components_file: a text file containing all the regressors
+        """
+        import numpy as np
+        import nibabel as nb
+        from scipy.special import legendre
+        out_files = []
+        for idx, filename in enumerate(filename_to_list(motion_params)):
+            params = np.genfromtxt(filename)
+            norm_val = np.genfromtxt(filename_to_list(comp_norm)[idx])
+            out_params = np.hstack((params, norm_val[:, None]))
+            try:
+                outlier_val = np.genfromtxt(filename_to_list(outliers)[idx])
+            except IOError:
+                outlier_val = np.empty((0))
+            for index in np.atleast_1d(outlier_val):
+                outlier_vector = np.zeros((out_params.shape[0], 1))
+                outlier_vector[index] = 1
+                out_params = np.hstack((out_params, outlier_vector))
+            if detrend_poly:
+                timepoints = out_params.shape[0]
+                X = np.empty((timepoints, 0))
+                for i in range(detrend_poly):
+                    X = np.hstack((X, legendre(
+                        i + 1)(np.linspace(-1, 1, timepoints))[:, None]))
+                out_params = np.hstack((out_params, X))
+            filename = os.path.join(os.getcwd(), "filter_regressor%02d.txt" % idx)
+            np.savetxt(filename, out_params, fmt="%.10f")
+            out_files.append(filename)
+        return out_files
+
+    def extract_noise_components(realigned_file, mask_file, num_components=5,
+                                 extra_regressors=None):
+        """Derive components most reflective of physiological noise
+
+        Parameters
+        ----------
+        realigned_file: a 4D Nifti file containing realigned volumes
+        mask_file: a 3D Nifti file containing white matter + ventricular masks
+        num_components: number of components to use for noise decomposition
+        extra_regressors: additional regressors to add
+
+        Returns
+        -------
+        components_file: a text file containing the noise components
+        """
+        from scipy.linalg.decomp_svd import svd
+        import numpy as np
+        import nibabel as nb
+        import os
+        imgseries = nb.load(realigned_file)
+        components = None
+        for filename in filename_to_list(mask_file):
+            mask = nb.load(filename).get_data()
+            if len(np.nonzero(mask > 0)[0]) == 0:
+                continue
+            voxel_timecourses = imgseries.get_data()[mask > 0]
+            voxel_timecourses[np.isnan(np.sum(voxel_timecourses, axis=1)), :] = 0
+            # remove mean and normalize by variance
+            # voxel_timecourses.shape == [nvoxels, time]
+            X = voxel_timecourses.T
+            stdX = np.std(X, axis=0)
+            stdX[stdX == 0] = 1.
+            stdX[np.isnan(stdX)] = 1.
+            stdX[np.isinf(stdX)] = 1.
+            X = (X - np.mean(X, axis=0)) / stdX
+            u, _, _ = svd(X, full_matrices=False)
+            if components is None:
+                components = u[:, :num_components]
+            else:
+                components = np.hstack((components, u[:, :num_components]))
+        if extra_regressors:
+            regressors = np.genfromtxt(extra_regressors)
+            components = np.hstack((components, regressors))
+        components_file = os.path.join(os.getcwd(), 'noise_components.txt')
+        np.savetxt(components_file, components, fmt="%.10f")
+        return components_file
+
+    def selectindex(files, idx):
+        import numpy as np
+        from nipype.utils.filemanip import filename_to_list, list_to_filename
+        return list_to_filename(np.array(filename_to_list(files))[idx].tolist())
+
+    def rename(in_files, suffix=None):
+        from nipype.utils.filemanip import (filename_to_list, split_filename,
+                                            list_to_filename)
+        out_files = []
+        for idx, filename in enumerate(filename_to_list(in_files)):
+            _, name, ext = split_filename(filename)
+            if suffix is None:
+                out_files.append(name + ('_%03d' % idx) + ext)
+            else:
+                out_files.append(name + suffix + ext)
+        return list_to_filename(out_files)
+
+    """
+    Start of pipeline here
+    """
+    estimate_noise = pe.Workflow(name=name)
+    inputnode = pe.Node(
+        interface=niu.IdentityInterface(
+            fields=['motion_parameters',
+                    'composite_norm',
+                    'outliers',
+                    'detrend_poly']),
+        name='inputspec')
+
+    outputnode = pe.Node(
+        interface=niu.IdentityInterface(fields=[
+            'transformed_files_mni',
+            'transformed_files_anat']),
+        name='outputspec')
+
+    """
+    Create first node
+    """
+    create_motionbasedfilter = Node(
+        Function(
+            input_names=['motion_params', 'comp_norm',
+                         'outliers', 'detrend_poly'],
+            output_names=['out_files'],
+            function=build_filter1,
+            imports=imports),
+        name='make_motionbasedfilter')
+
+    estimate_noise.connect(inputnode, create_motionbasedfilter)
+
+
 def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
     """
     Get info for a given subject
@@ -487,6 +644,7 @@ def preprocess(data_dir, subject=None, task_id=None, output_dir=None,
     """
     preproc = create_featreg_preproc(whichvol='first')
     registration = create_reg_workflow()
+    reslice_bold = create_apply_transforms_workflow()
 
     """
     Remove the plotting connection so that plot iterables don't propagate
@@ -624,6 +782,9 @@ def preprocess(data_dir, subject=None, task_id=None, output_dir=None,
     registration.inputs.inputspec.target_image_brain = \
         fsl.Info.standard_image('MNI152_T1_2mm_brain.nii.gz')
     registration.inputs.inputspec.config_file = 'T1_2_MNI152_2mm'
+    # Use median tSNR image as mean_image for registration
+    wf.connect(calc_median, 'median_file',
+               registration, 'inputspec.mean_image')
 
     """
     QA: Check alignment of bet to anatomical
@@ -645,3 +806,15 @@ def preprocess(data_dir, subject=None, task_id=None, output_dir=None,
     wf.connect(registration, 'inputspec.target_image', slicer_bold, 'in_file')
     wf.connect(registration, 'outputspec.transformed_mean',
                slicer_bold, 'image_edges')
+
+    """
+    Reslice BOLD into subject-specific and MNI space
+    """
+    wf.connect(preproc, 'outputspec.highpassed_files',
+               reslice_bold, 'inputspec.source_files')
+    wf.connect([
+        (registration, reslice_bold,
+         [('inputspec.mean_image', 'inputspec.mean_image'),
+          ('outputspec.func2target_transforms', 'inputspec.transforms'),
+          ('inputspec.target_image', 'inputspec.target_image')])
+               ])
