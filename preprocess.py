@@ -693,7 +693,7 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
     # get run ids
     runs_template = os.path.join(
         subject_funcdir,
-        'sub-{0}_task-{1}_*run-*_bold.*'.format(subject_id, task_id)
+        'sub-{0}_task-{1}_*run-*_bold.nii*'.format(subject_id, task_id)
     )
     runs = glob(runs_template)
     run_ids = [int(re.findall('run-([0-9]*)', r)[0]) for r in runs]
@@ -709,7 +709,7 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
 
 
 def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
-                        subj_prefix='*', hpcutoff=120., fwhm=6.0,
+                        subj_prefix='sub-*', hpcutoff=120., fwhm=6.0,
                         num_noise_components=5):
     """
     Preprocesses a BIDS dataset
@@ -753,7 +753,6 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     """
     Set up bids data specific components
     """
-    # XXX: check this
     subjects = sorted([path.split(os.path.sep)[-1] for path in
                        glob(os.path.join(data_dir, subj_prefix))])
 
@@ -775,28 +774,26 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         niu.Function(
             input_names=['subject_id', 'base_dir',
                          'task_id'],
-            # XXX: change this according to get_subjectinfo
-            output_names=['run_id', 'conds', 'TR'],
+            output_names=['run_id', 'TR'],
             function=get_subjectinfo),
         name='subjectinfo')
     subjinfo.inputs.base_dir = data_dir
 
     """
-    Set up DataGrabber to return anat, bold, and behav
+    Set up DataGrabber to return anat and bold
     """
-    # XXX: rename behav to events? or do I even need it?
     datasource = pe.Node(
         nio.DataGrabber(
             infields=['subject_id', 'run_id', 'task_id'],
-            outfields=['anat', 'bold', 'behav']),
+            outfields=['anat', 'bold']),
         name='datasource')
 
     datasource.inputs.base_directory = data_dir
     datasource.inputs.template = '*'
 
     datasource.inputs.field_template = {
-        'anat': 'sub-%s/anat/sub-%s_T1w.nii.gz',
-        'bold': 'sub-%s/func/sub-%s_task-%s_run-*_bold.nii.gz',
+        'anat': 'sub-%s/anat/sub-%s_T1w.nii*',
+        'bold': 'sub-%s/func/sub-%s_task-%s_*run-*_bold.nii*',
     }
 
     datasource.inputs.template_args = {
@@ -1067,6 +1064,8 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--subject', default=[],
                         nargs='+', type=str,
                         help="Subject name (e.g. 'sid00001')")
+    parser.add_argument('-x', '--subjectprefix', default='sub-',
+                        help="Subject prefix" + defstr)
     parser.add_argument('-t', '--task', default='',
                         type=str, help="Task name" + defstr)
     parser.add_argument('--hpfilter', default=120., type=float,
