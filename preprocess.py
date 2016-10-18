@@ -11,6 +11,8 @@ import nibabel as nb
 import numpy as np
 import os
 from glob import glob
+import json
+import re
 
 from nipype import config
 config.enable_provenance()
@@ -48,7 +50,8 @@ imports = ['import os',
            'import nibabel as nb',
            'import numpy as np',
            'import scipy as sp',
-           'from nipype.utils.filemanip import filename_to_list, list_to_filename, split_filename',
+           'from nipype.utils.filemanip import filename_to_list, '
+           'list_to_filename, split_filename',
            'from scipy.special import legendre'
            ]
 
@@ -666,11 +669,11 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
     Parameters
     -----------
     subject_id : str
-        Subject identifier (e.g., sub-01)
+        Subject identifier (e.g., sid000001)
     base_dir : str
         Path to base directory of the dataset
     task_id : str
-        Which task to process (e.g., task-facelocalizer)
+        Which task to process (e.g., facelocalizer)
     session_id : str or None
         Which session to process (e.g., ses-fmri01)
 
@@ -681,7 +684,28 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
     TR : float
         Repetition time
     """
-    pass
+    subject_funcdir = os.path.join(
+        base_dir,
+        'sub-{0}'.format(subject_id),
+        'func',
+    )
+
+    # get run ids
+    runs_template = os.path.join(
+        subject_funcdir,
+        'sub-{0}_task-{1}_*run-*_bold.*'.format(subject_id, task_id)
+    )
+    runs = glob(runs_template)
+    run_ids = [int(re.findall('run-([0-9]*)', r)[0]) for r in runs]
+
+    task_json = os.path.join(
+        base_dir,
+        'task-{0}_bold.json'.format(task_id)
+    )
+    with open(task_json, 'rt') as f:
+        dataset_info = json.load(f)
+
+    return run_ids, dataset_info['RepetitionTime']
 
 
 def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
