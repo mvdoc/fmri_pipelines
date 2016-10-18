@@ -684,9 +684,9 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
     pass
 
 
-def preprocess(data_dir, subject=None, task_id=None, output_dir=None,
-               subj_prefix='*', hpcutoff=120., fwhm=6.0,
-               num_noise_components=5):
+def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
+                        subj_prefix='*', hpcutoff=120., fwhm=6.0,
+                        num_noise_components=5):
     """
     Preprocesses a BIDS dataset
 
@@ -917,7 +917,175 @@ def preprocess(data_dir, subject=None, task_id=None, output_dir=None,
         registration, ('outputspec.anat_segmented_mni', selectindex, [2]),
         estimate_noise, 'inputspec.mask_file')
 
+    """
+    Connect to a datasink
+    """
+    # Setup substitutions for filenames
+    # XXX: check they make sense
+    def get_subs(subject_id, run_id, task_id):
+        subs = list()
+        subs.append(('_subject_id_{0}_'.format(subject_id), 
+                     'sub-{0}'.format(subject_id)))
+        subs.append(('task_id_{0}/'.format(task_id), 
+                     '/task-{0}_'.format(task_id)))
+        subs.append(('bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_mean_warp',
+                     'mean'))
+        subs.append(('bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_mean_flirt',
+                     'affine'))
+
+        for i, run_num in enumerate(run_id):
+            subs.append(('__get_aparc_tsnr{0}/'.format(run_num), 
+                         '/run-{0:02d}_'.format(run_num)))
+            subs.append(('__art{0}/'.format(i), 
+                         '/run{0:02d}_'.format(run_num)))
+            subs.append(('_tsnr{0}/'.format(i),
+                         '/run{0:02d}_'.format(run_num)))
+            subs.append(('__dilatemask{0}/'.format(i),
+                         '/run-{0:02d}_'.format(run_num)))
+            subs.append(('__realign{0}/'.format(i),
+                         '/run-{0:02d}_'.format(run_num)))
+            subs.append(('__modelgen{0}/'.format(i),
+                         '/run-{0:02d}_'.format(run_num)))
+            subs.append(('_warpbold{0}/bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans.nii.gz'.format(i),
+                         'run-{0:02d}/bold_mni.nii.gz'.format(run_num)))
+            subs.append(('_warpepi{0}/bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans.nii.gz'.format(i),
+                         'run-{0:02d}/bold.nii.gz'.format(run_num)))
+            subs.append(('_makecompcorrfilter{0}/'.format(i),
+                         '/run{0:02d}_'.format(run_num)))
+
+        subs.append(('_bold_dtype_mcf_bet_thresh_dil', '_mask'))
+        subs.append(('_output_warped_image', '_anat2target'))
+        subs.append(('median_flirt_brain_mask', 'median_brain_mask'))
+        subs.append(('median_bbreg_brain_mask', 'median_brain_mask'))
+        subs.append(('highres001.png', 'betted_brain.png'))
+        subs.append(('MNI152_T1_2mm.png', 'median_bold_mni.png'))
+        # warpsegment
+        for i in range(3):
+            subs.append(('_warpsegment{0}'.format(i), '/'))
+
+        return subs
+
+    # Make substitution node
+    subsgen = pe.Node(
+        niu.Function(
+            input_names=['subject_id',
+                         'run_id',
+                         'task_id'],
+            output_names=['substitutions'],
+            function=get_subs),
+        name='subsgen')
+    wf.connect(subjinfo, 'run_id', subsgen, 'run_id')
+
+    # Now make datasink node
+    datasink = pe.Node(interface=nio.DataSink(), name="datasink")
+    wf.connect(infosource, 'subject_id', datasink, 'container')
+    wf.connect(infosource, 'subject_id', subsgen, 'subject_id')
+    wf.connect(infosource, 'task_id', subsgen, 'task_id')
+    wf.connect(subsgen, 'substitutions', datasink, 'substitutions')
+
+    # Pre-processing output
+    wf.connect([(preproc, datasink,
+                 [('outputspec.motion_parameters', 'qa.motion'),
+                  ('outputspec.motion_plots', 'qa.motion.plots'),
+                  ('outputspec.mask', 'qa.mask')]
+                 )])
+
+    # registration output
+    wf.connect([(registration, datasink,
+                 [('outputspec.mean2anat_mask', 'qa.mask.mean2anat'),
+                  ('outputspec.mean2anat_mask_mni', 'qa.mask.mean2anat_mni'),
+                  ('outputspec.anat2target', 'qa.anat2target'),
+                  ('outputspec.transformed_mean', 'mean.mni'),
+                  ('outputspec.func2anat_transform', 'xfm.mean2anat'),
+                  ('outputspec.func2target_transforms', 'xfm.mean2target'),
+                  ('outputspec.anat2target_transform', 'xfm.anat2target')])
+                 ])
+    # artifact detection output
+    wf.connect([(art, datasink,
+                 [('norm_files', 'qa.art.@norm'),
+                  ('intensity_files', 'qa.art.@intensity'),
+                  ('outlier_files', 'qa.art.@outlier_files')]
+                 )])
+    # tsnr
+    wf.connect(tsnr, 'tsnr_file', datasink, 'qa.tsnr.@map')
+    # median tsnr
+    wf.connect(calc_median, 'median_file', datasink, 'mean')
+    # slicer
+    wf.connect(slicer, 'out_file', datasink, 'qa.bet')
+    wf.connect(slicer_bold, 'out_file', datasink, 'qa.boldmean_mni')
+    # resliced bolds
+    wf.connect([(reslice_bold, datasink,
+                 [('outputspec.transformed_files_mni', 'bold.mni'),
+                  ('outputspec.transformed_files_anat', 'bold')])
+                ])
+    # noise components
+    wf.connect(estimate_noise, 'outputspec.noise_components',
+               datasink, 'qa.noisecomp')
 
     """
-    TODO: Connect to a datasink
+    Set processing parameters and return workflow
     """
+    preproc.inputs.inputspec.fwhm = fwhm
+    gethighpass.inputs.hpcutoff = hpcutoff
+    datasink.inputs.base_directory = output_dir
+
+    return wf
+
+"""
+Make command line parser
+"""
+if __name__ == '__main__':
+    import argparse
+    defstr = ' (default %(default)s)'
+    parser = argparse.ArgumentParser(prog='preprocess.py',
+                                     description=__doc__)
+    parser.add_argument('-d', '--datasetdir', required=True)
+    parser.add_argument('-s', '--subject', default=[],
+                        nargs='+', type=str,
+                        help="Subject name (e.g. 'sid00001')")
+    parser.add_argument('-t', '--task', default='',
+                        type=str, help="Task name" + defstr)
+    parser.add_argument('--hpfilter', default=120., type=float,
+                        help="High pass filter cutoff (in secs)" + defstr)
+    parser.add_argument('--fwhm', default=6.,
+                        type=float, help="Spatial FWHM" + defstr)
+    parser.add_argument("-o", "--output_dir", dest="outdir",
+                        help="Output directory base")
+    parser.add_argument("-w", "--work_dir", dest="work_dir",
+                        help="Output directory base")
+    parser.add_argument("-p", "--plugin", dest="plugin",
+                        default='Linear',
+                        help="Plugin to use")
+    parser.add_argument("--plugin_args", dest="plugin_args",
+                        help="Plugin arguments")
+    parser.add_argument("--write-graph", default="",
+                        help="Do not run, just write the graph to "
+                             "specified file")
+
+    args = parser.parse_args()
+    outdir = args.outdir
+    work_dir = os.getcwd()
+    if args.work_dir:
+        work_dir = os.path.abspath(args.work_dir)
+    if outdir:
+        outdir = os.path.abspath(outdir)
+    else:
+        outdir = os.path.join(work_dir, 'output')
+    outdir = os.path.join(outdir, 'task-{0}'.format(args.task))
+
+    wf = preprocess_pipeline(data_dir=os.path.abspath(args.datasetdir),
+                             subject=args.subject,
+                             task_id=args.task,
+                             subj_prefix=args.subjectprefix,
+                             output_dir=outdir,
+                             hpcutoff=args.hpfilter,
+                             fwhm=args.fwhm,
+                             )
+    # wf.config['execution']['remove_unnecessary_outputs'] = False
+    wf.base_dir = work_dir
+    if args.write_graph:
+        wf.write_graph(args.write_graph)
+    elif args.plugin_args:
+        wf.run(args.plugin, plugin_args=eval(args.plugin_args))
+    else:
+        wf.run(args.plugin)
