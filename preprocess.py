@@ -706,6 +706,10 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
             'sub-{0}_task-{1}_*run-*_bold.json'.format(subject_id, task_id)
         )
     )
+    if len(runs) != len(run_jsons):
+        raise ValueError('Got {0} runs but {1} '
+                         'json files'.format(len(runs), len(run_jsons)))
+
     with open(run_jsons[0], 'rt') as f:
         dataset_info = json.load(f)
 
