@@ -698,11 +698,15 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
     runs = glob(runs_template)
     run_ids = [int(re.findall('run-([0-9]*)', r)[0]) for r in runs]
 
-    task_json = os.path.join(
-        base_dir,
-        'task-{0}_bold.json'.format(task_id)
+    # Note: in DBIC standards we'll have a json file for every run, thus
+    # assume that each task will have the same RT
+    run_jsons = glob(
+        os.path.join(
+            subject_funcdir,
+            'sub-{0}_task-{1}_*run-*_bold.json'.format(subject_id, task_id)
+        )
     )
-    with open(task_json, 'rt') as f:
+    with open(run_jsons[0], 'rt') as f:
         dataset_info = json.load(f)
 
     return run_ids, dataset_info['RepetitionTime']
