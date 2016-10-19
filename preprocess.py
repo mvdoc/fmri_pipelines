@@ -579,7 +579,7 @@ def create_estimatenoise_workflow(name='estimate_noise'):
     inputnode = pe.Node(
         interface=niu.IdentityInterface(
             fields=[
-                'source_files'
+                'source_files',
                 'motion_parameters',
                 'composite_norm',
                 'outliers',
@@ -607,10 +607,10 @@ def create_estimatenoise_workflow(name='estimate_noise'):
         name='make_motionbasedfilter')
 
     estimate_noise.connect([(inputnode, make_motionbasedfilter,
-                             [('motion_parameters', 'motion_params',
-                               'composite_norm', 'comp_norm',
-                               'outliers', 'outliers',
-                               'detrend_poly', 'detrend_poly')])
+                             [('motion_parameters', 'motion_params'),
+                              ('composite_norm', 'comp_norm'),
+                              ('outliers', 'outliers'),
+                              ('detrend_poly', 'detrend_poly')])
                             ])
 
     # Link filter
@@ -684,16 +684,21 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
     TR : float
         Repetition time
     """
+    import os
+    import re
+    import json
+    from glob import glob
+
     subject_funcdir = os.path.join(
         base_dir,
-        'sub-{0}'.format(subject_id),
+        '{0}'.format(subject_id),
         'func',
     )
 
     # get run ids
     runs_template = os.path.join(
         subject_funcdir,
-        'sub-{0}_task-{1}_*run-*_bold.nii*'.format(subject_id, task_id)
+        '{0}_task-{1}_*run-*_bold.nii*'.format(subject_id, task_id)
     )
     runs = glob(runs_template)
     run_ids = [int(re.findall('run-([0-9]*)', r)[0]) for r in runs]
@@ -703,7 +708,7 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
     run_jsons = glob(
         os.path.join(
             subject_funcdir,
-            'sub-{0}_task-{1}_*run-*_bold.json'.format(subject_id, task_id)
+            '{0}_task-{1}_*run-*_bold.json'.format(subject_id, task_id)
         )
     )
     if len(runs) != len(run_jsons):
@@ -763,7 +768,6 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     """
     subjects = sorted([path.split(os.path.sep)[-1] for path in
                        glob(os.path.join(data_dir, subj_prefix))])
-
     infosource = pe.Node(
         niu.IdentityInterface(
             fields=['subject_id', 'task_id']),
@@ -800,8 +804,8 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     datasource.inputs.template = '*'
 
     datasource.inputs.field_template = {
-        'anat': 'sub-%s/anat/sub-%s_T1w.nii*',
-        'bold': 'sub-%s/func/sub-%s_task-%s_*run-*_bold.nii*',
+        'anat': '%s/anat/%s_T1w.nii*',
+        'bold': '%s/func/%s_task-%s_*run-*_bold.nii*',
     }
 
     datasource.inputs.template_args = {
@@ -931,15 +935,15 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         out_array = np.array(filename_to_list(files))[idx].tolist()
         return list_to_filename(out_array)
 
-    estimate_noise.inputs.detrend_poly = 2
-    estimate_noise.inputs.num_components = num_noise_components
+    estimate_noise.inputs.inputspec.detrend_poly = 2
+    estimate_noise.inputs.inputspec.num_components = num_noise_components
     wf.connect(preproc, 'outputspec.motion_parameters',
                estimate_noise, 'inputspec.motion_parameters')
     wf.connect(art, 'norm_files',
                estimate_noise, 'inputspec.composite_norm')
     wf.connect(art, 'outlier_files',
                estimate_noise, 'inputspec.outliers')
-    wf.connect(reslice_bold, 'transformed_files_mni',
+    wf.connect(reslice_bold, 'outputspec.transformed_files_mni',
                estimate_noise, 'inputspec.source_files')
     # take only white matter mask
     wf.connect(
@@ -954,7 +958,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     def get_subs(subject_id, run_id, task_id):
         subs = list()
         subs.append(('_subject_id_{0}_'.format(subject_id), 
-                     'sub-{0}'.format(subject_id)))
+                     '{0}'.format(subject_id)))
         subs.append(('task_id_{0}/'.format(task_id), 
                      '/task-{0}_'.format(task_id)))
         subs.append(('bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_mean_warp',
@@ -1106,8 +1110,8 @@ if __name__ == '__main__':
 
     wf = preprocess_pipeline(data_dir=os.path.abspath(args.datasetdir),
                              subject=args.subject,
-                             task_id=args.task,
-                             subj_prefix=args.subjectprefix,
+                             task_id=[args.task],
+                             subj_prefix=args.subjectprefix + '*',
                              output_dir=outdir,
                              hpcutoff=args.hpfilter,
                              fwhm=args.fwhm,
