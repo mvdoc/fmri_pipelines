@@ -11,11 +11,14 @@ import nibabel as nb
 import numpy as np
 import os
 from glob import glob
-import json
-import re
+#import json
+#import re
 
 from nipype import config
 config.enable_provenance()
+config.enable_debug_mode()
+from nipype import logging
+logging.update_logging(config)
 from nipype.external import six
 import nipype.pipeline.engine as pe
 import nipype.algorithms.modelgen as model
@@ -46,9 +49,9 @@ if fsl.Info.version() and \
 
 fsl.FSLCommand.set_default_output_type('NIFTI_GZ')
 
-imports = ['import os',
+imports = ['import numpy as np',
+           'import os',
            'import nibabel as nb',
-           'import numpy as np',
            'import scipy as sp',
            'from nipype.utils.filemanip import filename_to_list, '
            'list_to_filename, split_filename',
@@ -277,18 +280,18 @@ def create_reg_workflow(name='registration'):
     """
     Transform the remaining images. First to anatomical and then to target
     """
-    warpall = pe.MapNode(ants.ApplyTransforms(),
-                         iterfield=['input_image'],
-                         name='warpall')
-    warpall.inputs.input_image_type = 0
-    warpall.inputs.interpolation = 'Linear'
-    warpall.inputs.invert_transform_flags = [False, False]
-    warpall.inputs.terminal_output = 'file'
-
-    register.connect(inputnode, 'target_image_brain',
-                     warpall, 'reference_image')
-    register.connect(inputnode, 'source_files', warpall, 'input_image')
-    register.connect(merge, 'out', warpall, 'transforms')
+#    warpall = pe.MapNode(ants.ApplyTransforms(),
+#                         iterfield=['input_image'],
+#                         name='warpall')
+#    warpall.inputs.input_image_type = 0
+#    warpall.inputs.interpolation = 'Linear'
+#    warpall.inputs.invert_transform_flags = [False, False]
+#    warpall.inputs.terminal_output = 'file'
+#
+#    register.connect(inputnode, 'target_image_brain',
+#                     warpall, 'reference_image')
+#    register.connect(inputnode, 'source_files', warpall, 'input_image')
+#    register.connect(merge, 'out', warpall, 'transforms')
 
     """
     Transform the mask from subject space to MNI
@@ -332,8 +335,8 @@ def create_reg_workflow(name='registration'):
                      outputnode, 'anat2target_transform')
     register.connect(warpmean, 'output_image',
                      outputnode, 'transformed_mean')
-    register.connect(warpall, 'output_image',
-                     outputnode, 'transformed_files')
+    #register.connect(warpall, 'output_image',
+    #                 outputnode, 'transformed_files')
     register.connect(mean2anatbbr, 'out_matrix_file',
                      outputnode, 'func2anat_transform')
     register.connect(merge, 'out',
@@ -485,9 +488,9 @@ def create_estimatenoise_workflow(name='estimate_noise'):
         -------
         components_file: a text file containing all the regressors
         """
-        import numpy as np
-        import nibabel as nb
-        from scipy.special import legendre
+        #import numpy as np
+        #import nibabel as nb
+        #from scipy.special import legendre
         out_files = []
         for idx, filename in enumerate(filename_to_list(motion_params)):
             params = np.genfromtxt(filename)
@@ -528,10 +531,10 @@ def create_estimatenoise_workflow(name='estimate_noise'):
         -------
         components_file: a text file containing the noise components
         """
-        from scipy.linalg.decomp_svd import svd
-        import numpy as np
-        import nibabel as nb
-        import os
+        #import numpy as np
+        #import nibabel as nb
+        #import os
+        #from scipy.linalg.decomp_svd import svd
         imgseries = nb.load(realigned_file)
         components = None
         for filename in filename_to_list(mask_file):
