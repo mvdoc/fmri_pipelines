@@ -724,8 +724,8 @@ def get_subs(subject_id, run_id, task_id):
     subs = list()
     subs.append(('_subject_id_{0}_'.format(subject_id),
                  '{0}'.format(subject_id)))
-    subs.append(('task_id_{0}/'.format(task_id),
-                 'task-{0}_'.format(task_id)))
+    #subs.append(('task_id_{0}/'.format(task_id),
+    #             'task-{0}_'.format(task_id)))
     subs.append(('_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans',
                  ''))
 
@@ -738,7 +738,7 @@ def get_subs(subject_id, run_id, task_id):
                                              run_id=run_id)
             suffix = '' if what == 'art' else '_' + what
             subs.append(('_art{0}/'.format(i) + what + '.' + this_templ +
-                         '_bold_dtype_mcf',
+                         '_dtype_mcf',
                          this_templ + suffix))
     #     subs.append(('_tsnr{0}/'.format(i),
     #                  '/run{0:02d}_'.format(run_num)))
