@@ -757,8 +757,8 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     Remove the plotting connection so that plot iterables don't propagate
     to the model stage
     """
-    preproc.disconnect(preproc.get_node('plot_motion'), 'out_file',
-                       preproc.get_node('outputspec'), 'motion_plots')
+    #preproc.disconnect(preproc.get_node('plot_motion'), 'out_file',
+    #                   preproc.get_node('outputspec'), 'motion_plots')
 
     """
     Set up bids data specific components
@@ -958,41 +958,45 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         subs.append(('_subject_id_{0}_'.format(subject_id), 
                      '{0}'.format(subject_id)))
         subs.append(('task_id_{0}/'.format(task_id), 
-                     '/task-{0}_'.format(task_id)))
-        subs.append(('bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_mean_warp',
-                     'mean'))
-        subs.append(('bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_mean_flirt',
-                     'affine'))
+                     'task-{0}_'.format(task_id)))
+        subs.append(('_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans',
+                     ''))
 
+        art_template = '{subject_id}_task-{task_id}_run-{run_id:02d}'
         for i, run_num in enumerate(run_id):
-            subs.append(('__get_aparc_tsnr{0}/'.format(run_num), 
-                         '/run-{0:02d}_'.format(run_num)))
-            subs.append(('__art{0}/'.format(i), 
-                         '/run{0:02d}_'.format(run_num)))
-            subs.append(('_tsnr{0}/'.format(i),
-                         '/run{0:02d}_'.format(run_num)))
-            subs.append(('__dilatemask{0}/'.format(i),
-                         '/run-{0:02d}_'.format(run_num)))
-            subs.append(('__realign{0}/'.format(i),
-                         '/run-{0:02d}_'.format(run_num)))
-            subs.append(('__modelgen{0}/'.format(i),
-                         '/run-{0:02d}_'.format(run_num)))
-            subs.append(('_warpbold{0}/bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans.nii.gz'.format(i),
-                         'run-{0:02d}/bold_mni.nii.gz'.format(run_num)))
-            subs.append(('_warpepi{0}/bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans.nii.gz'.format(i),
-                         'run-{0:02d}/bold.nii.gz'.format(run_num)))
-            subs.append(('_makecompcorrfilter{0}/'.format(i),
-                         '/run{0:02d}_'.format(run_num)))
-
-        subs.append(('_bold_dtype_mcf_bet_thresh_dil', '_mask'))
-        subs.append(('_output_warped_image', '_anat2target'))
-        subs.append(('median_flirt_brain_mask', 'median_brain_mask'))
-        subs.append(('median_bbreg_brain_mask', 'median_brain_mask'))
-        subs.append(('highres001.png', 'betted_brain.png'))
-        subs.append(('MNI152_T1_2mm.png', 'median_bold_mni.png'))
-        # warpsegment
-        for i in range(3):
-            subs.append(('_warpsegment{0}'.format(i), '/'))
+            # art
+            for what in ['art', 'global_intensity', 'norm']:
+                this_templ = art_template.format(subject_id=subject_id,
+                                                 task_id=task_id,
+                                                 run_id=run_id)
+                suffix = '' if what == 'art' else '_' + what
+                subs.append(('_art{0}/'.format(i) + what + '.' + this_templ +
+                             '_bold_dtype_mcf_',
+                             this_templ + suffix))
+        #     subs.append(('_tsnr{0}/'.format(i),
+        #                  '/run{0:02d}_'.format(run_num)))
+        #     subs.append(('__dilatemask{0}/'.format(i),
+        #                  '/run-{0:02d}_'.format(run_num)))
+        #     subs.append(('__realign{0}/'.format(i),
+        #                  '/run-{0:02d}_'.format(run_num)))
+        #     subs.append(('__modelgen{0}/'.format(i),
+        #                  '/run-{0:02d}_'.format(run_num)))
+        #     subs.append(('_warpbold{0}/bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans.nii.gz'.format(i),
+        #                  'run-{0:02d}/bold_mni.nii.gz'.format(run_num)))
+        #     subs.append(('_warpepi{0}/bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans.nii.gz'.format(i),
+        #                  'run-{0:02d}/bold.nii.gz'.format(run_num)))
+        #     subs.append(('_makecompcorrfilter{0}/'.format(i),
+        #                  '/run{0:02d}_'.format(run_num)))
+        #
+        # subs.append(('_bold_dtype_mcf_bet_thresh_dil', '_mask'))
+        # subs.append(('_output_warped_image', '_anat2target'))
+        # subs.append(('median_flirt_brain_mask', 'median_brain_mask'))
+        # subs.append(('median_bbreg_brain_mask', 'median_brain_mask'))
+        # subs.append(('highres001.png', 'betted_brain.png'))
+        # subs.append(('MNI152_T1_2mm.png', 'median_bold_mni.png'))
+        # # warpsegment
+        # for i in range(3):
+        #     subs.append(('_warpsegment{0}'.format(i), '/'))
 
         return subs
 
@@ -1023,14 +1027,14 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
 
     # registration output
     wf.connect([(registration, datasink,
-                 [('outputspec.mean2anat_mask', 'qa.mask.mean2anat'),
-                  ('outputspec.mean2anat_mask_mni', 'qa.mask.mean2anat_mni'),
+                 [('outputspec.mean2anat_mask', 'mask.mean2anat'),
+                  ('outputspec.mean2anat_mask_mni', 'mask.mean2anat_mni'),
                   ('outputspec.anat2target', 'qa.anat2target'),
                   ('outputspec.transformed_mean', 'mean.mni'),
                   ('outputspec.func2anat_transform', 'xfm.mean2anat'),
                   ('outputspec.func2target_transforms', 'xfm.mean2target'),
                   ('outputspec.anat2target_transform', 'xfm.anat2target')])
-                 ])
+                ])
     # artifact detection output
     wf.connect([(art, datasink,
                  [('norm_files', 'qa.art.@norm'),
@@ -1046,12 +1050,12 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     wf.connect(slicer_bold, 'out_file', datasink, 'qa.boldmean_mni')
     # resliced bolds
     wf.connect([(reslice_bold, datasink,
-                 [('outputspec.transformed_files_mni', 'bold.mni'),
-                  ('outputspec.transformed_files_anat', 'bold')])
+                 [('outputspec.transformed_files_mni', 'func.mni'),
+                  ('outputspec.transformed_files_anat', 'func')])
                 ])
     # noise components
     wf.connect(estimate_noise, 'outputspec.noise_components',
-               datasink, 'qa.noisecomp')
+               datasink, 'noisecomp')
 
     """
     Set processing parameters and return workflow
