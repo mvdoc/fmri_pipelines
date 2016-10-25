@@ -164,7 +164,7 @@ def create_reg_workflow(name='registration'):
     """
     Estimate the tissue classes from the anatomical image.
     """
-    stripper = pe.Node(fsl.BET(frac=0.3), name='stripper')
+    stripper = pe.Node(fsl.BET(frac=0.5), name='stripper')
     register.connect(inputnode, 'anatomical_image', stripper, 'in_file')
     fast = pe.Node(fsl.FAST(), name='fast')
     register.connect(stripper, 'out_file', fast, 'in_files')
