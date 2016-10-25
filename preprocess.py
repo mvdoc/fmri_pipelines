@@ -718,6 +718,55 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
 
     return run_ids, dataset_info['RepetitionTime']
 
+# Setup substitutions for filenames
+# XXX: check they make sense
+def get_subs(subject_id, run_id, task_id):
+    subs = list()
+    subs.append(('_subject_id_{0}_'.format(subject_id),
+                 '{0}'.format(subject_id)))
+    subs.append(('task_id_{0}/'.format(task_id),
+                 'task-{0}_'.format(task_id)))
+    subs.append(('_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans',
+                 ''))
+
+    art_template = '{subject_id}_task-{task_id}_run-{run_id}'
+    for i, run_num in enumerate(run_id):
+        # art
+        for what in ['art', 'global_intensity', 'norm']:
+            this_templ = art_template.format(subject_id=subject_id,
+                                             task_id=task_id,
+                                             run_id=run_id)
+            suffix = '' if what == 'art' else '_' + what
+            subs.append(('_art{0}/'.format(i) + what + '.' + this_templ +
+                         '_bold_dtype_mcf',
+                         this_templ + suffix))
+    #     subs.append(('_tsnr{0}/'.format(i),
+    #                  '/run{0:02d}_'.format(run_num)))
+    #     subs.append(('__dilatemask{0}/'.format(i),
+    #                  '/run-{0:02d}_'.format(run_num)))
+    #     subs.append(('__realign{0}/'.format(i),
+    #                  '/run-{0:02d}_'.format(run_num)))
+    #     subs.append(('__modelgen{0}/'.format(i),
+    #                  '/run-{0:02d}_'.format(run_num)))
+    #     subs.append(('_warpbold{0}/bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans.nii.gz'.format(i),
+    #                  'run-{0:02d}/bold_mni.nii.gz'.format(run_num)))
+    #     subs.append(('_warpepi{0}/bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans.nii.gz'.format(i),
+    #                  'run-{0:02d}/bold.nii.gz'.format(run_num)))
+    #     subs.append(('_makecompcorrfilter{0}/'.format(i),
+    #                  '/run{0:02d}_'.format(run_num)))
+    #
+    # subs.append(('_bold_dtype_mcf_bet_thresh_dil', '_mask'))
+    # subs.append(('_output_warped_image', '_anat2target'))
+    # subs.append(('median_flirt_brain_mask', 'median_brain_mask'))
+    # subs.append(('median_bbreg_brain_mask', 'median_brain_mask'))
+    # subs.append(('highres001.png', 'betted_brain.png'))
+    # subs.append(('MNI152_T1_2mm.png', 'median_bold_mni.png'))
+    # # warpsegment
+    # for i in range(3):
+    #     subs.append(('_warpsegment{0}'.format(i), '/'))
+
+    return subs
+
 
 def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
                         subj_prefix='sub-*', hpcutoff=120., fwhm=6.0,
@@ -952,55 +1001,6 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     """
     Connect to a datasink
     """
-    # Setup substitutions for filenames
-    # XXX: check they make sense
-    def get_subs(subject_id, run_id, task_id):
-        subs = list()
-        subs.append(('_subject_id_{0}_'.format(subject_id), 
-                     '{0}'.format(subject_id)))
-        subs.append(('task_id_{0}/'.format(task_id), 
-                     'task-{0}_'.format(task_id)))
-        subs.append(('_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans',
-                     ''))
-
-        art_template = '{subject_id}_task-{task_id}_run-{run_id}'
-        for i, run_num in enumerate(run_id):
-            # art
-            for what in ['art', 'global_intensity', 'norm']:
-                this_templ = art_template.format(subject_id=subject_id,
-                                                 task_id=task_id,
-                                                 run_id=run_id)
-                suffix = '' if what == 'art' else '_' + what
-                subs.append(('_art{0}/'.format(i) + what + '.' + this_templ +
-                             '_bold_dtype_mcf_',
-                             this_templ + suffix))
-        #     subs.append(('_tsnr{0}/'.format(i),
-        #                  '/run{0:02d}_'.format(run_num)))
-        #     subs.append(('__dilatemask{0}/'.format(i),
-        #                  '/run-{0:02d}_'.format(run_num)))
-        #     subs.append(('__realign{0}/'.format(i),
-        #                  '/run-{0:02d}_'.format(run_num)))
-        #     subs.append(('__modelgen{0}/'.format(i),
-        #                  '/run-{0:02d}_'.format(run_num)))
-        #     subs.append(('_warpbold{0}/bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans.nii.gz'.format(i),
-        #                  'run-{0:02d}/bold_mni.nii.gz'.format(run_num)))
-        #     subs.append(('_warpepi{0}/bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans.nii.gz'.format(i),
-        #                  'run-{0:02d}/bold.nii.gz'.format(run_num)))
-        #     subs.append(('_makecompcorrfilter{0}/'.format(i),
-        #                  '/run{0:02d}_'.format(run_num)))
-        #
-        # subs.append(('_bold_dtype_mcf_bet_thresh_dil', '_mask'))
-        # subs.append(('_output_warped_image', '_anat2target'))
-        # subs.append(('median_flirt_brain_mask', 'median_brain_mask'))
-        # subs.append(('median_bbreg_brain_mask', 'median_brain_mask'))
-        # subs.append(('highres001.png', 'betted_brain.png'))
-        # subs.append(('MNI152_T1_2mm.png', 'median_bold_mni.png'))
-        # # warpsegment
-        # for i in range(3):
-        #     subs.append(('_warpsegment{0}'.format(i), '/'))
-
-        return subs
-
     # Make substitution node
     subsgen = pe.Node(
         niu.Function(
