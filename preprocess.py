@@ -699,7 +699,7 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
         '{0}_task-{1}_*run-*_bold.nii*'.format(subject_id, task_id)
     )
     runs = glob(runs_template)
-    run_ids = [int(re.findall('run-([0-9]*)', r)[0]) for r in runs]
+    run_ids = sorted([int(re.findall('run-([0-9]*)', r)[0]) for r in runs])
 
     # Note: in DBIC standards we'll have a json file for every run, thus
     # assume that each task will have the same RT
@@ -729,13 +729,13 @@ def get_subs(subject_id, run_id, task_id):
     subs.append(('_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans',
                  ''))
 
-    art_template = '{subject_id}_task-{task_id}_run-{run_id}_bold'
+    art_template = '{subject_id}_task-{task_id}_run-{run_id:02d}_bold'
     for i, run_num in enumerate(run_id):
         # art
         for what in ['art', 'global_intensity', 'norm']:
             this_templ = art_template.format(subject_id=subject_id,
                                              task_id=task_id,
-                                             run_id=run_id)
+                                             run_id=run_num)
             suffix = '' if what == 'art' else '_' + what
             subs.append(('_art{0}/'.format(i) + what + '.' + this_templ +
                          '_dtype_mcf',
