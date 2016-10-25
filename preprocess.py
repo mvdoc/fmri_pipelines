@@ -16,9 +16,9 @@ from glob import glob
 
 from nipype import config
 config.enable_provenance()
-config.enable_debug_mode()
-from nipype import logging
-logging.update_logging(config)
+#config.enable_debug_mode()
+#from nipype import logging
+#logging.update_logging(config)
 from nipype.external import six
 import nipype.pipeline.engine as pe
 import nipype.algorithms.modelgen as model
@@ -55,7 +55,8 @@ imports = ['import numpy as np',
            'import scipy as sp',
            'from nipype.utils.filemanip import filename_to_list, '
            'list_to_filename, split_filename',
-           'from scipy.special import legendre'
+           'from scipy.special import legendre',
+           'from scipy.linalg.decomp_svd import svd'
            ]
 
 
@@ -436,7 +437,6 @@ def create_apply_transforms_workflow(name='bold2mni'):
                      outputnode, 'transformed_files_anat')
     return register
 
-
 def create_estimatenoise_workflow(name='estimate_noise'):
     """
     Builds a workflow that returns additional regressors from noise estimates.
@@ -488,9 +488,6 @@ def create_estimatenoise_workflow(name='estimate_noise'):
         -------
         components_file: a text file containing all the regressors
         """
-        #import numpy as np
-        #import nibabel as nb
-        #from scipy.special import legendre
         out_files = []
         for idx, filename in enumerate(filename_to_list(motion_params)):
             params = np.genfromtxt(filename)
@@ -519,22 +516,18 @@ def create_estimatenoise_workflow(name='estimate_noise'):
     def extract_noise_components(realigned_file, mask_file, num_components=5,
                                  extra_regressors=None):
         """Derive components most reflective of physiological noise
-
+    
         Parameters
         ----------
         realigned_file: a 4D Nifti file containing realigned volumes
         mask_file: a 3D Nifti file containing white matter + ventricular masks
         num_components: number of components to use for noise decomposition
         extra_regressors: additional regressors to add
-
+    
         Returns
         -------
         components_file: a text file containing the noise components
         """
-        #import numpy as np
-        #import nibabel as nb
-        #import os
-        #from scipy.linalg.decomp_svd import svd
         imgseries = nb.load(realigned_file)
         components = None
         for filename in filename_to_list(mask_file):
@@ -626,11 +619,11 @@ def create_estimatenoise_workflow(name='estimate_noise'):
 
     estimate_noise.connect(inputnode, 'source_files',
                            motionbasedfilter, 'in_file')
+    estimate_noise.connect(make_motionbasedfilter, 'out_files',
+                           motionbasedfilter, 'design')
     estimate_noise.connect(
         inputnode, ('source_files', rename, '_filtermotart'),
         motionbasedfilter, 'out_res_name')
-    estimate_noise.connect(make_motionbasedfilter, 'out_files',
-                           motionbasedfilter, 'design')
 
     """
     Get noise components on residuals within the provided mask
@@ -641,22 +634,23 @@ def create_estimatenoise_workflow(name='estimate_noise'):
                 'realigned_file',
                 'mask_file',
                 'num_components',
-                'extra_regressors'],
+                'extra_regressors'
+                ],
             output_names=['out_files'],
             function=extract_noise_components,
             imports=imports),
         iterfield=['realigned_file', 'extra_regressors'],
         name='make_compcorrfilter')
 
-    estimate_noise.connect(inputnode, 'num_components',
-                           make_compcorrfilter, 'num_components')
-    estimate_noise.connect(make_motionbasedfilter, 'out_files',
-                           make_compcorrfilter, 'extra_regressors')
     estimate_noise.connect(motionbasedfilter, 'out_res',
                            make_compcorrfilter, 'realigned_file')
     # pick only what is in the mask
     estimate_noise.connect(inputnode, 'mask_file',
                            make_compcorrfilter, 'mask_file')
+    estimate_noise.connect(inputnode, 'num_components',
+                           make_compcorrfilter, 'num_components')
+    estimate_noise.connect(make_motionbasedfilter, 'out_files',
+                           make_compcorrfilter, 'extra_regressors')
 
     # return what we need
     estimate_noise.connect(make_compcorrfilter, 'out_files',
@@ -934,6 +928,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     """
     # Use this function to select which mask to use
     def selectindex(files, idx):
+        import numpy as np
         from nipype.utils.filemanip import filename_to_list, list_to_filename
         out_array = np.array(filename_to_list(files))[idx].tolist()
         return list_to_filename(out_array)
