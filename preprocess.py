@@ -438,6 +438,7 @@ def create_apply_transforms_workflow(name='bold2mni'):
                      outputnode, 'transformed_files_anat')
     return register
 
+
 def create_estimatenoise_workflow(name='estimate_noise'):
     """
     Builds a workflow that returns additional regressors from noise estimates.
@@ -728,6 +729,9 @@ def get_subs(subject_id, run_id, task_id):
     #             'task-{0}_'.format(task_id)))
     subs.append(('_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans',
                  ''))
+    subs.append(('{0}task_id_{1}/'.format(subject_id, task_id),
+                 ''))
+    subs.append(('dtype_mcf_bet_thresh_dil', 'mask'))
 
     art_template = '{subject_id}_task-{task_id}_run-{run_id:02d}_bold'
     for i, run_num in enumerate(run_id):
@@ -740,6 +744,20 @@ def get_subs(subject_id, run_id, task_id):
             subs.append(('_art{0}/'.format(i) + what + '.' + this_templ +
                          '_dtype_mcf',
                          this_templ + suffix))
+        # warpbold
+        subs.append(('_warpbold{0}/'.format(i),
+                     ''))
+        # warpbold_subj
+        subs.append(('_warpbold_subj{0}/'.format(i),
+                     ''))
+        # motion
+        subs.append(('_realign{0}/'.format(i),
+                     ''))
+        # tsnr
+        subs.append(('_tsnr{0}/tsnr'.format(i),
+                     '{0}_task-{1]_run-{2:02d}_tsnr'.format(subject_id,
+                                                            task_id,
+                                                            run_num)))
     #     subs.append(('_tsnr{0}/'.format(i),
     #                  '/run{0:02d}_'.format(run_num)))
     #     subs.append(('__dilatemask{0}/'.format(i),
@@ -748,8 +766,6 @@ def get_subs(subject_id, run_id, task_id):
     #                  '/run-{0:02d}_'.format(run_num)))
     #     subs.append(('__modelgen{0}/'.format(i),
     #                  '/run-{0:02d}_'.format(run_num)))
-    #     subs.append(('_warpbold{0}/bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans.nii.gz'.format(i),
-    #                  'run-{0:02d}/bold_mni.nii.gz'.format(run_num)))
     #     subs.append(('_warpepi{0}/bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans.nii.gz'.format(i),
     #                  'run-{0:02d}/bold.nii.gz'.format(run_num)))
     #     subs.append(('_makecompcorrfilter{0}/'.format(i),
