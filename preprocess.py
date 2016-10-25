@@ -729,7 +729,7 @@ def get_subs(subject_id, run_id, task_id):
     subs.append(('_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans',
                  ''))
 
-    art_template = '{subject_id}_task-{task_id}_run-{run_id}'
+    art_template = '{subject_id}_task-{task_id}_run-{run_id}_bold'
     for i, run_num in enumerate(run_id):
         # art
         for what in ['art', 'global_intensity', 'norm']:
