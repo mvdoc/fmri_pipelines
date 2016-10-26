@@ -956,14 +956,17 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         art_template = '{subject_id}_task-{task_id}_run-{run_id:02d}'
         for i, run_num in enumerate(run_id):
             # art
-            for what in ['art', 'global_intensity', 'norm']:
+            subs_art = {'art': 'art',
+                        'global_intensity': 'globalintensity',
+                        'norm': 'norm'}
+            for fromwhat, towhat in subs_art.iteritems():
                 this_templ = art_template.format(subject_id=subject_id,
                                                  task_id=task_id,
                                                  run_id=run_num)
-                suffix = '' if what == 'art' else '_' + what
-                subs.append(('_art{0}/'.format(i) + what + '.' + this_templ +
-                             '_bold_dtype_mcf',
-                             this_templ + suffix.replace('_', '')))
+                suffix = '' if fromwhat == 'art' else '_' + towhat
+                subs.append(('_art{0}/'.format(i) + fromwhat + '.' +
+                             this_templ + '_bold_dtype_mcf',
+                             this_templ + suffix))
             # warpbold
             subs.append(('_warpbold{0}/'.format(i),
                          ''))
@@ -1009,6 +1012,8 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         # median image mask
         subs.append(('median_flirt_brain_mask',
                      '{0}_task-{1}_brain_bold_mask'.format(subject_id, task_id)))
+        subs.append(('median',
+                    '{0}_task-{1}_median'))
 
         return subs
 
