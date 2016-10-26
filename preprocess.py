@@ -779,7 +779,7 @@ def get_subs(subject_id, run_id, task_id):
     subs.append(('_trans.nii', '_mni.nii'))
 
     # skullstrip
-    subs.append('skullstrip', 'brain')
+    subs.append(('skullstrip', 'brain'))_
 
     return subs
 
