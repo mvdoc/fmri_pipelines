@@ -1046,12 +1046,14 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     # registration output
     wf.connect([(registration, datasink,
                  [('outputspec.mean2anat_mask', 'mask.mean2anat'),
-                  ('outputspec.mean2anat_mask_mni', 'mask.mean2anat_mni'),
+                  ('outputspec.mean2anat_mask_mni', 'mask.mean2anat.mni'),
                   ('outputspec.anat2target', 'qa.anat2target'),
                   ('outputspec.transformed_mean', 'mean.mni'),
                   ('outputspec.func2anat_transform', 'xfm.mean2anat'),
                   ('outputspec.func2target_transforms', 'xfm.mean2target'),
-                  ('outputspec.anat2target_transform', 'xfm.anat2target')])
+                  ('outputspec.anat2target_transform', 'xfm.anat2target'),
+                  ('outputspec.anat_segmented', 'segm'),
+                  ('outputspec.anat_segmented_mni', 'segm.mni')])
                 ])
     # artifact detection output
     wf.connect([(art, datasink,
