@@ -733,7 +733,7 @@ def get_subs(subject_id, run_id, task_id):
     subs.append(('dtype_mcf_bet_thresh_dil', 'mask'))
     subs.append(('_bold_dtype_mcf.nii.gz', ''))
 
-    art_template = '{subject_id}_task-{task_id}_run-{run_id:02d}_bold'
+    art_template = '{subject_id}_task-{task_id}_run-{run_id:02d}'
     for i, run_num in enumerate(run_id):
         # art
         for what in ['art', 'global_intensity', 'norm']:
@@ -742,8 +742,8 @@ def get_subs(subject_id, run_id, task_id):
                                              run_id=run_num)
             suffix = '' if what == 'art' else '_' + what
             subs.append(('_art{0}/'.format(i) + what + '.' + this_templ +
-                         '_dtype_mcf',
-                         this_templ + suffix))
+                         'bold_dtype_mcf',
+                         this_templ + suffix.replace('_', '')))
         # warpbold
         subs.append(('_warpbold{0}/'.format(i),
                      ''))
@@ -772,7 +772,8 @@ def get_subs(subject_id, run_id, task_id):
     # slicer images
     subs.append(('{0}_T1w.png'.format(subject_id),
                  '{0}_T1w_brain.png'.format(subject_id)))
-    subs.append(('MNI152_T1_2mm.png', 'mean2mni.png'))
+    subs.append(('MNI152_T1_2mm.png',
+                 '{0}_task-{1}_mean2mni.png'.format(subject_id, task_id)))
     # warpsegment
     for i in range(3):
         subs.append(('_warpsegment{0}'.format(i), '/'))
@@ -780,6 +781,14 @@ def get_subs(subject_id, run_id, task_id):
 
     # skullstrip
     subs.append(('skullstrip', 'brain'))
+
+    # warped anatomy
+    subs.append(('output_warped_image',
+                 '{0}_task-{1}_T1w_brain_mni'.format(subject_id, task_id)))
+
+    # median image mask
+    subs.append(('median_flirt_brain_mask',
+                 '{0}_task-{1}_brain_bold_mask'.format(subject_id, task_id)))
 
     return subs
 
