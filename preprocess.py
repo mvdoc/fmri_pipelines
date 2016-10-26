@@ -720,78 +720,6 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
 
     return run_ids, dataset_info['RepetitionTime']
 
-# Setup substitutions for filenames
-# XXX: check they make sense
-def get_subs(subject_id, run_id, task_id):
-    subs = list()
-    subs.append(('_subject_id_{0}_'.format(subject_id),
-                 '{0}'.format(subject_id)))
-    subs.append(('_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans',
-                 ''))
-    subs.append(('{0}task_id_{1}/'.format(subject_id, task_id),
-                 ''))
-    subs.append(('dtype_mcf_bet_thresh_dil', 'mask'))
-    subs.append(('_bold_dtype_mcf.nii.gz', ''))
-
-    art_template = '{subject_id}_task-{task_id}_run-{run_id:02d}'
-    for i, run_num in enumerate(run_id):
-        # art
-        for what in ['art', 'global_intensity', 'norm']:
-            this_templ = art_template.format(subject_id=subject_id,
-                                             task_id=task_id,
-                                             run_id=run_num)
-            suffix = '' if what == 'art' else '_' + what
-            subs.append(('_art{0}/'.format(i) + what + '.' + this_templ +
-                         'bold_dtype_mcf',
-                         this_templ + suffix.replace('_', '')))
-        # warpbold
-        subs.append(('_warpbold{0}/'.format(i),
-                     ''))
-        # warpbold_subj
-        subs.append(('_warpbold_subj{0}/'.format(i),
-                     ''))
-        # motion
-        subs.append(('_realign{0}/'.format(i),
-                     ''))
-        # tsnr
-        subs.append(('_tsnr{0}/tsnr'.format(i),
-                     '{0}_task-{1}_run-{2:02d}_tsnr'.format(subject_id,
-                                                            task_id,
-                                                            run_num)))
-        # dilate mask
-        subs.append(('_dilatemask{0}/'.format(i),
-                     ''))
-
-        # noisecomp
-        subs.append((
-            '_make_compcorrfilter{0}/noise_components'.format(i),
-            '{0}_task-{1}_run-{2:02d}_noisecomponents'.format(subject_id,
-                                                              task_id,
-                                                              run_num)
-        ))
-    # slicer images
-    subs.append(('{0}_T1w.png'.format(subject_id),
-                 '{0}_T1w_brain.png'.format(subject_id)))
-    subs.append(('MNI152_T1_2mm.png',
-                 '{0}_task-{1}_mean2mni.png'.format(subject_id, task_id)))
-    # warpsegment
-    for i in range(3):
-        subs.append(('_warpsegment{0}'.format(i), '/'))
-    subs.append(('_trans.nii', '_mni.nii'))
-
-    # skullstrip
-    subs.append(('skullstrip', 'brain'))
-
-    # warped anatomy
-    subs.append(('output_warped_image',
-                 '{0}_task-{1}_T1w_brain_mni'.format(subject_id, task_id)))
-
-    # median image mask
-    subs.append(('median_flirt_brain_mask',
-                 '{0}_task-{1}_brain_bold_mask'.format(subject_id, task_id)))
-
-    return subs
-
 
 def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
                         subj_prefix='sub-*', hpcutoff=120., fwhm=6.0,
@@ -1026,6 +954,77 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     """
     Connect to a datasink
     """
+    # Setup substitutions for filenames
+    def get_subs(subject_id, run_id, task_id):
+        subs = list()
+        subs.append(('_subject_id_{0}_'.format(subject_id),
+                     '{0}'.format(subject_id)))
+        subs.append(('_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans',
+                     ''))
+        subs.append(('{0}task_id_{1}/'.format(subject_id, task_id),
+                     ''))
+        subs.append(('dtype_mcf_bet_thresh_dil', 'mask'))
+        subs.append(('_bold_dtype_mcf.nii.gz', ''))
+
+        art_template = '{subject_id}_task-{task_id}_run-{run_id:02d}'
+        for i, run_num in enumerate(run_id):
+            # art
+            for what in ['art', 'global_intensity', 'norm']:
+                this_templ = art_template.format(subject_id=subject_id,
+                                                 task_id=task_id,
+                                                 run_id=run_num)
+                suffix = '' if what == 'art' else '_' + what
+                subs.append(('_art{0}/'.format(i) + what + '.' + this_templ +
+                             'bold_dtype_mcf',
+                             this_templ + suffix.replace('_', '')))
+            # warpbold
+            subs.append(('_warpbold{0}/'.format(i),
+                         ''))
+            # warpbold_subj
+            subs.append(('_warpbold_subj{0}/'.format(i),
+                         ''))
+            # motion
+            subs.append(('_realign{0}/'.format(i),
+                         ''))
+            # tsnr
+            subs.append(('_tsnr{0}/tsnr'.format(i),
+                         '{0}_task-{1}_run-{2:02d}_tsnr'.format(subject_id,
+                                                                task_id,
+                                                                run_num)))
+            # dilate mask
+            subs.append(('_dilatemask{0}/'.format(i),
+                         ''))
+
+            # noisecomp
+            subs.append((
+                '_make_compcorrfilter{0}/noise_components'.format(i),
+                '{0}_task-{1}_run-{2:02d}_noisecomponents'.format(subject_id,
+                                                                  task_id,
+                                                                  run_num)
+            ))
+        # slicer images
+        subs.append(('{0}_T1w.png'.format(subject_id),
+                     '{0}_T1w_brain.png'.format(subject_id)))
+        subs.append(('MNI152_T1_2mm.png',
+                     '{0}_task-{1}_mean2mni.png'.format(subject_id, task_id)))
+        # warpsegment
+        for i in range(3):
+            subs.append(('_warpsegment{0}'.format(i), '/'))
+        subs.append(('_trans.nii', '_mni.nii'))
+
+        # skullstrip
+        subs.append(('skullstrip', 'brain'))
+
+        # warped anatomy
+        subs.append(('output_warped_image',
+                     '{0}_task-{1}_T1w_brain_mni'.format(subject_id, task_id)))
+
+        # median image mask
+        subs.append(('median_flirt_brain_mask',
+                     '{0}_task-{1}_brain_bold_mask'.format(subject_id, task_id)))
+
+        return subs
+
     # Make substitution node
     subsgen = pe.Node(
         niu.Function(
