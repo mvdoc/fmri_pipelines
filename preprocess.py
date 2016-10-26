@@ -12,36 +12,23 @@ import nibabel as nb
 import numpy as np
 import os
 from glob import glob
-#import json
-#import re
 
 from nipype import config
 config.enable_provenance()
-#config.enable_debug_mode()
-#from nipype import logging
-#logging.update_logging(config)
-from nipype.external import six
 import nipype.pipeline.engine as pe
-import nipype.algorithms.modelgen as model
 import nipype.algorithms.rapidart as ra
-import nipype.interfaces.fsl as fsl
-import nipype.interfaces.ants as ants
 from nipype.algorithms.misc import TSNR
 from nipype.interfaces.c3 import C3dAffineTool
 import nipype.interfaces.io as nio
 import nipype.interfaces.utility as niu
-from nipype.workflows.fmri.fsl import (create_featreg_preproc,
-                                       create_modelfit_workflow,
-                                       create_fixed_effects_flow)
+from nipype.workflows.fmri.fsl import create_featreg_preproc
 from nipype import LooseVersion
 from nipype import Workflow, Node, MapNode
-from nipype.interfaces import (fsl, Function, ants, freesurfer, afni)
+from nipype.interfaces import (fsl, Function, ants, afni)
 
-from nipype.interfaces.utility import Rename, Merge, IdentityInterface
 from nipype.utils.filemanip import filename_to_list
 from nipype.interfaces.io import DataSink, FreeSurferSource
 import nipype.interfaces.freesurfer as fs
-
 
 version = 0
 if fsl.Info.version() and \
@@ -49,6 +36,7 @@ if fsl.Info.version() and \
     version = 507
 
 fsl.FSLCommand.set_default_output_type('NIFTI_GZ')
+afni.AFNICommand.set_default_output_type('NIFTI_GZ')
 
 imports = ['import numpy as np',
            'import os',
@@ -164,8 +152,7 @@ def create_reg_workflow(name='registration'):
     """
     Estimate the tissue classes from the anatomical image.
     """
-    #stripper = pe.Node(fsl.BET(frac=0.5), name='stripper')
-    stripper = pe.Node(afni.SkullStrip(outputtype='NIFTI_GZ'), name='stripper')
+    stripper = pe.Node(afni.SkullStrip(), name='stripper')
     register.connect(inputnode, 'anatomical_image', stripper, 'in_file')
     fast = pe.Node(fsl.FAST(), name='fast')
     register.connect(stripper, 'out_file', fast, 'in_files')
