@@ -975,7 +975,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
                                                  run_id=run_num)
                 suffix = '' if what == 'art' else '_' + what
                 subs.append(('_art{0}/'.format(i) + what + '.' + this_templ +
-                             'bold_dtype_mcf',
+                             '_bold_dtype_mcf',
                              this_templ + suffix.replace('_', '')))
             # warpbold
             subs.append(('_warpbold{0}/'.format(i),
