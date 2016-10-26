@@ -35,7 +35,7 @@ from nipype.workflows.fmri.fsl import (create_featreg_preproc,
                                        create_fixed_effects_flow)
 from nipype import LooseVersion
 from nipype import Workflow, Node, MapNode
-from nipype.interfaces import (fsl, Function, ants, freesurfer)
+from nipype.interfaces import (fsl, Function, ants, freesurfer, afni)
 
 from nipype.interfaces.utility import Rename, Merge, IdentityInterface
 from nipype.utils.filemanip import filename_to_list
@@ -164,7 +164,8 @@ def create_reg_workflow(name='registration'):
     """
     Estimate the tissue classes from the anatomical image.
     """
-    stripper = pe.Node(fsl.BET(frac=0.5), name='stripper')
+    #stripper = pe.Node(fsl.BET(frac=0.5), name='stripper')
+    stripper = pe.Node(afni.SkullStrip(), name='stripper')
     register.connect(inputnode, 'anatomical_image', stripper, 'in_file')
     fast = pe.Node(fsl.FAST(), name='fast')
     register.connect(stripper, 'out_file', fast, 'in_files')
