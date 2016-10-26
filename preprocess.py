@@ -882,7 +882,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     QA: Check skull stripping on anatomical
     """
     slicer_skullstrip = pe.Node(
-        fsl.Slicer(image_width=1300, sample_axial=12,
+        fsl.Slicer(image_width=1300, all_axial=True, #sample_axial=12,
                    nearest_neighbour=True, threshold_edges=-0.1),
         name='slicer')
     wf.connect(datasource, 'anat', slicer_skullstrip, 'in_file')
@@ -893,7 +893,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     QA: Check alignment of mean bold image to anatomical
     """
     slicer_bold = pe.Node(
-        fsl.Slicer(image_width=1300, sample_axial=8,
+        fsl.Slicer(image_width=1300, all_axial=True, #sample_axial=8,
                    nearest_neighbour=True, threshold_edges=0.1),
         name='slicer_bold')
     wf.connect(registration, 'inputspec.target_image', slicer_bold, 'in_file')
@@ -904,7 +904,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     QA: Check ANTS registration of anatomical to target template
     """
     slicer_ants = pe.Node(
-        fsl.Slicer(image_width=1300, sample_axial=12,
+        fsl.Slicer(image_width=1300, all_axial=True, #sample_axial=12,
                    nearest_neighbour=True, threshold_edges=0.1),
         name='slicer_ants')
     wf.connect(registration, 'inputspec.target_image', slicer_ants, 'in_file')
