@@ -36,7 +36,7 @@ if fsl.Info.version() and \
     version = 507
 
 fsl.FSLCommand.set_default_output_type('NIFTI_GZ')
-afni.AFNICommand.set_default_output_type('NIFTI_GZ')
+afni.base.AFNICommand.set_default_output_type('NIFTI_GZ')
 
 imports = ['import numpy as np',
            'import os',
