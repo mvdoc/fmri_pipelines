@@ -7,7 +7,6 @@ fmri_ants_openfmri. It performs the following steps:
 1. Registration
 2. Projection of the EPIs to the template space
 """
-# TODO: consolidate subject_id, task_id, and run_id so they either all have the prefix or they don't
 import nibabel as nb
 import numpy as np
 import os
@@ -882,12 +881,13 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     """
     QA: Check skull stripping on anatomical
     """
-    slicer = pe.Node(
+    slicer_skullstrip = pe.Node(
         fsl.Slicer(image_width=1300, sample_axial=12,
                    nearest_neighbour=True, threshold_edges=-0.1),
         name='slicer')
-    wf.connect(datasource, 'anat', slicer, 'in_file')
-    wf.connect(registration, 'outputspec.brain', slicer, 'image_edges')
+    wf.connect(datasource, 'anat', slicer_skullstrip, 'in_file')
+    wf.connect(registration, 'outputspec.brain',
+               slicer_skullstrip, 'image_edges')
 
     """
     QA: Check alignment of mean bold image to anatomical
@@ -899,6 +899,17 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     wf.connect(registration, 'inputspec.target_image', slicer_bold, 'in_file')
     wf.connect(registration, 'outputspec.transformed_mean',
                slicer_bold, 'image_edges')
+
+    """
+    QA: Check ANTS registration of anatomical to target template
+    """
+    slicer_ants = pe.Node(
+        fsl.Slicer(image_width=1300, sample_axial=12,
+                   nearest_neighbour=True, threshold_edges=0.1),
+        name='slicer_ants')
+    wf.connect(registration, 'inputspec.target_image', slicer_ants, 'in_file')
+    wf.connect(registration, 'outputspec.anat2target',
+               slicer_ants, 'image_edges')
 
     """
     Reslice BOLD into subject-specific and MNI space
@@ -1065,8 +1076,9 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     # median tsnr
     wf.connect(calc_median, 'median_file', datasink, 'mean')
     # slicer
-    wf.connect(slicer, 'out_file', datasink, 'qa.plots.@skullstrip')
+    wf.connect(slicer_skullstrip, 'out_file', datasink, 'qa.plots.@skullstrip')
     wf.connect(slicer_bold, 'out_file', datasink, 'qa.plots.@mean2mni')
+    wf.connect(slicer_ants, 'out_file', datasink, 'qa.plots.@anat2target')
     # resliced bolds
     wf.connect([(reslice_bold, datasink,
                  [('outputspec.transformed_files_mni', 'func.mni'),
