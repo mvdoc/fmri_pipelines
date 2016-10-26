@@ -761,6 +761,14 @@ def get_subs(subject_id, run_id, task_id):
         # dilate mask
         subs.append(('_dilatemask{0}/'.format(i),
                      ''))
+
+        # noisecomp
+        subs.append((
+            '_make_compcorrfilter{0}/noise_components'.format(i),
+            '{0}_task-{1}_run-{2:02d}_noisecomponents'.format(subject_id,
+                                                              task_id,
+                                                              run_num)
+        ))
     # slicer images
     subs.append(('{0}_T1w.png'.format(subject_id),
                  '{0}_T1w_brain.png'.format(subject_id)))
@@ -768,6 +776,10 @@ def get_subs(subject_id, run_id, task_id):
     # warpsegment
     for i in range(3):
         subs.append(('_warpsegment{0}'.format(i), '/'))
+    subs.append(('_trans.nii', '_mni.nii'))
+
+    # skullstrip
+    subs.append('skullstrip', 'brain')
 
     return subs
 
@@ -1033,12 +1045,12 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     # registration output
     wf.connect([(registration, datasink,
                  [('outputspec.mean2anat_mask', 'mask.mean2anat'),
-                  ('outputspec.mean2anat_mask_mni', 'mask.mean2anat.mni'),
-                  ('outputspec.anat2target', 'qa.anat2target'),
+                  ('outputspec.mean2anat_mask_mni', 'mask.mean2mni'),
+                  ('outputspec.anat2target', 'qa.anat2mni'),
                   ('outputspec.transformed_mean', 'mean.mni'),
                   ('outputspec.func2anat_transform', 'xfm.mean2anat'),
-                  ('outputspec.func2target_transforms', 'xfm.mean2target'),
-                  ('outputspec.anat2target_transform', 'xfm.anat2target'),
+                  ('outputspec.func2target_transforms', 'xfm.mean2mni'),
+                  ('outputspec.anat2target_transform', 'xfm.anat2mni'),
                   ('outputspec.anat_segmented', 'segm'),
                   ('outputspec.anat_segmented_mni', 'segm.mni')])
                 ])
