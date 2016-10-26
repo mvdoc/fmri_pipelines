@@ -1074,8 +1074,8 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     # median tsnr
     wf.connect(calc_median, 'median_file', datasink, 'mean')
     # slicer
-    wf.connect(slicer, 'out_file', datasink, 'qa.skullstrip')
-    wf.connect(slicer_bold, 'out_file', datasink, 'qa.mean2mni')
+    wf.connect(slicer, 'out_file', datasink, 'qa.plots.@skullstrip')
+    wf.connect(slicer_bold, 'out_file', datasink, 'qa.plots.@mean2mni')
     # resliced bolds
     wf.connect([(reslice_bold, datasink,
                  [('outputspec.transformed_files_mni', 'func.mni'),
