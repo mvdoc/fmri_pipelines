@@ -1006,8 +1006,10 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         # slicer images
         subs.append(('{0}_T1w.png'.format(subject_id),
                      '{0}_T1w_brain.png'.format(subject_id)))
-        subs.append(('MNI152_T1_2mm.png',
+        subs.append(('mean2mni/MNI152_T1_2mm.png',
                      '{0}_task-{1}_mean2mni.png'.format(subject_id, task_id)))
+        subs.append(('anat2mni/MNI152_T1_2mm.png',
+                     '{0}_task-{1}_anat2mni.png'.format(subject_id, task_id)))
         # warpsegment
         for i in range(3):
             subs.append(('_warpsegment{0}'.format(i), '/'))
@@ -1078,8 +1080,8 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     wf.connect(calc_median, 'median_file', datasink, 'mean')
     # slicer
     wf.connect(slicer_skullstrip, 'out_file', datasink, 'qa.plots.@skullstrip')
-    wf.connect(slicer_bold, 'out_file', datasink, 'qa.plots.@mean2mni')
-    wf.connect(slicer_ants, 'out_file', datasink, 'qa.plots.@anat2target')
+    wf.connect(slicer_bold, 'out_file', datasink, 'qa.plots.mean2mni')
+    wf.connect(slicer_ants, 'out_file', datasink, 'qa.plots.anat2mni')
     # resliced bolds
     wf.connect([(reslice_bold, datasink,
                  [('outputspec.transformed_files_mni', 'func.mni'),
