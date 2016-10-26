@@ -1022,9 +1022,10 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
 
         # median image mask
         subs.append(('median_flirt_brain_mask',
-                     '{0}_task-{1}_brain_bold_mask'.format(subject_id, task_id)))
+                     '{0}_task-{1}_brain_bold_mask'.format(subject_id,
+                                                           task_id)))
         subs.append(('median',
-                    '{0}_task-{1}_median'))
+                    '{0}_task-{1}_median'.format(subject_id, task_id)))
 
         return subs
 
@@ -1139,7 +1140,6 @@ if __name__ == '__main__':
         outdir = os.path.abspath(outdir)
     else:
         outdir = os.path.join(work_dir, 'output')
-    outdir = os.path.join(outdir, 'task-{0}'.format(args.task))
 
     wf = preprocess_pipeline(data_dir=os.path.abspath(args.datasetdir),
                              subject=args.subject,
