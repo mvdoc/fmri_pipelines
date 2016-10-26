@@ -726,13 +726,12 @@ def get_subs(subject_id, run_id, task_id):
     subs = list()
     subs.append(('_subject_id_{0}_'.format(subject_id),
                  '{0}'.format(subject_id)))
-    #subs.append(('task_id_{0}/'.format(task_id),
-    #             'task-{0}_'.format(task_id)))
     subs.append(('_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans',
                  ''))
     subs.append(('{0}task_id_{1}/'.format(subject_id, task_id),
                  ''))
     subs.append(('dtype_mcf_bet_thresh_dil', 'mask'))
+    subs.append(('_bold_dtype_mcf.nii.gz', ''))
 
     art_template = '{subject_id}_task-{task_id}_run-{run_id:02d}_bold'
     for i, run_num in enumerate(run_id):
@@ -759,28 +758,16 @@ def get_subs(subject_id, run_id, task_id):
                      '{0}_task-{1}_run-{2:02d}_tsnr'.format(subject_id,
                                                             task_id,
                                                             run_num)))
-    #     subs.append(('_tsnr{0}/'.format(i),
-    #                  '/run{0:02d}_'.format(run_num)))
-    #     subs.append(('__dilatemask{0}/'.format(i),
-    #                  '/run-{0:02d}_'.format(run_num)))
-    #     subs.append(('__realign{0}/'.format(i),
-    #                  '/run-{0:02d}_'.format(run_num)))
-    #     subs.append(('__modelgen{0}/'.format(i),
-    #                  '/run-{0:02d}_'.format(run_num)))
-    #     subs.append(('_warpepi{0}/bold_dtype_mcf_mask_smooth_mask_gms_tempfilt_maths_trans.nii.gz'.format(i),
-    #                  'run-{0:02d}/bold.nii.gz'.format(run_num)))
-    #     subs.append(('_makecompcorrfilter{0}/'.format(i),
-    #                  '/run{0:02d}_'.format(run_num)))
-    #
-    # subs.append(('_bold_dtype_mcf_bet_thresh_dil', '_mask'))
-    # subs.append(('_output_warped_image', '_anat2target'))
-    # subs.append(('median_flirt_brain_mask', 'median_brain_mask'))
-    # subs.append(('median_bbreg_brain_mask', 'median_brain_mask'))
-    # subs.append(('highres001.png', 'betted_brain.png'))
-    # subs.append(('MNI152_T1_2mm.png', 'median_bold_mni.png'))
-    # # warpsegment
-    # for i in range(3):
-    #     subs.append(('_warpsegment{0}'.format(i), '/'))
+        # dilate mask
+        subs.append(('_dilatemask{0}/'.format(i),
+                     ''))
+    # slicer images
+    subs.append(('{0}_T1w.png'.format(subject_id),
+                 '{0}_T1w_brain.png'.format(subject_id)))
+    subs.append(('MNI152_T1_2mm.png', 'mean2mni.png'))
+    # warpsegment
+    for i in range(3):
+        subs.append(('_warpsegment{0}'.format(i), '/'))
 
     return subs
 
@@ -957,7 +944,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
                registration, 'inputspec.mean_image')
 
     """
-    QA: Check alignment of bet to anatomical
+    QA: Check skull stripping on anatomical
     """
     slicer = pe.Node(
         fsl.Slicer(image_width=1300, sample_axial=12,
@@ -1066,8 +1053,8 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     # median tsnr
     wf.connect(calc_median, 'median_file', datasink, 'mean')
     # slicer
-    wf.connect(slicer, 'out_file', datasink, 'qa.bet')
-    wf.connect(slicer_bold, 'out_file', datasink, 'qa.boldmean_mni')
+    wf.connect(slicer, 'out_file', datasink, 'qa.skullstrip')
+    wf.connect(slicer_bold, 'out_file', datasink, 'qa.mean2mni')
     # resliced bolds
     wf.connect([(reslice_bold, datasink,
                  [('outputspec.transformed_files_mni', 'func.mni'),
