@@ -756,7 +756,7 @@ def get_subs(subject_id, run_id, task_id):
                      ''))
         # tsnr
         subs.append(('_tsnr{0}/tsnr'.format(i),
-                     '{0}_task-{1]_run-{2:02d}_tsnr'.format(subject_id,
+                     '{0}_task-{1}_run-{2:02d}_tsnr'.format(subject_id,
                                                             task_id,
                                                             run_num)))
     #     subs.append(('_tsnr{0}/'.format(i),
