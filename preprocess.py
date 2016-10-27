@@ -21,6 +21,7 @@ from nipype.interfaces.c3 import C3dAffineTool
 import nipype.interfaces.io as nio
 import nipype.interfaces.utility as niu
 from nipype.workflows.fmri.fsl import create_featreg_preproc
+from nipype.workflows.smri.freesurfer import create_reconall_workflow
 from nipype import LooseVersion
 from nipype import Workflow, Node, MapNode
 from nipype.interfaces import (fsl, Function, ants, afni)
@@ -354,22 +355,6 @@ def create_registration_workflow(name='registration'):
     register.connect(merge, 'out', warpmean, 'transforms')
 
     """
-    Transform the remaining images. First to anatomical and then to target
-    """
-#    warpall = pe.MapNode(ants.ApplyTransforms(),
-#                         iterfield=['input_image'],
-#                         name='warpall')
-#    warpall.inputs.input_image_type = 0
-#    warpall.inputs.interpolation = 'Linear'
-#    warpall.inputs.invert_transform_flags = [False, False]
-#    warpall.inputs.terminal_output = 'file'
-#
-#    register.connect(inputnode, 'target_image_brain',
-#                     warpall, 'reference_image')
-#    register.connect(inputnode, 'source_files', warpall, 'input_image')
-#    register.connect(merge, 'out', warpall, 'transforms')
-
-    """
     Transform the mask from subject space to MNI
     """
     warpmask = pe.Node(ants.ApplyTransforms(),
@@ -411,8 +396,6 @@ def create_registration_workflow(name='registration'):
                      outputnode, 'anat2target_transform')
     register.connect(warpmean, 'output_image',
                      outputnode, 'transformed_mean')
-    #register.connect(warpall, 'output_image',
-    #                 outputnode, 'transformed_files')
     register.connect(mean2anatbbr, 'out_matrix_file',
                      outputnode, 'func2anat_transform')
     register.connect(merge, 'out',
