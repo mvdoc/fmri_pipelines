@@ -93,7 +93,7 @@ def create_fieldmapcorrection_workflow(name='fmapcorrection'):
         inputspec.delta_TE :
             echo time difference of the fieldmap sequence in ms
         inputspec.dwell_time :
-            dwell time (aka Echo Spacing)
+            dwell time (aka Echo Spacing) in s
 
 
     Outputs:
