@@ -16,7 +16,7 @@ from nipype import config
 config.enable_provenance()
 import nipype.pipeline.engine as pe
 import nipype.algorithms.rapidart as ra
-from nipype.algorithms.misc import TSNR
+from nipype.algorithms.misc import TSNR, Gunzip
 from nipype.interfaces.c3 import C3dAffineTool
 import nipype.interfaces.io as nio
 import nipype.interfaces.utility as niu
@@ -124,15 +124,22 @@ def create_fieldmapcorrection_workflow(name='fmapcorrection'):
                         bet, 'in_file')
 
     """
+    Gunzip phasediff for fsl_prepare_fieldmap
+    """
+    gunzip = pe.Node(Gunzip(), name='gunzip')
+    fmapcorrect.connect(gunzip, 'in_file',
+                        inputnode, 'phase_file')
+
+    """
     Prepare fieldmap using fsl_prepare_fieldmap
     """
     prepare = pe.Node(fsl.PrepareFieldmap(), name='preparefmap')
     fmapcorrect.connect(bet, 'out_file',
                         prepare, 'in_magnitude')
-    fmapcorrect.connect([(inputnode, prepare,
-                         [('phase_file', 'in_phase'),
-                          ('delta_TE', 'delta_TE')])
-                         ])
+    fmapcorrect.connect(gunzip, 'out_file',
+                        'prepare', 'in_phase')
+    fmapcorrect.connect(inputnode, 'delta_TE',
+                        prepare, 'delta_TE')
 
     """
     Apply fieldmap correction
