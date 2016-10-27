@@ -113,7 +113,7 @@ def create_fieldmapcorrection_workflow(name='fmapcorrection'):
         name='inputspec')
     outputnode = pe.Node(
         interface=niu.IdentityInterface(
-            fields=['warped_files']),
+            fields=['unwarped_files']),
         name='outputspec')
 
     """
