@@ -1061,7 +1061,8 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
 
 def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
                         hpcutoff=120., fwhm=6.0,
-                        num_noise_components=5):
+                        num_noise_components=5,
+                        use_fs=False):
     """
     Preprocesses a BIDS dataset
 
@@ -1076,7 +1077,6 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         Task to process
     output_dir : str
         Output directory
-    subj_prefix : str
     hpcutoff : float
         high pass cutoff in seconds
     fwhm : float
@@ -1084,6 +1084,8 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     num_noise_components : int
         number of PCs of timeseries in ventricles to output as additional
         noise regressors
+    use_fs : bool
+        whether to use freesurfer for registration and run recon-all
     """
 
     subj_prefix = 'sub-*'
@@ -1091,7 +1093,16 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     Load nipype workflows
     """
     preproc = create_featreg_preproc(whichvol='first')
-    registration = create_registration_workflow()
+    if use_fs:
+        registration = create_freesurfer_registration_workflow()
+        reconall = create_reconall_workflow()
+        # create subjects dir for freesurfer
+        subjects_dir = os.path.join(output_dir, 'subjects_dir')
+        if not os.path.exists(subjects_dir):
+            os.mkdir(subjects_dir)
+        registration.inputs.inputspec.subjects_dir = subjects_dir
+    else:
+        registration = create_registration_workflow()
     reslice_bold = create_apply_transforms_workflow()
     estimate_noise = create_estimatenoise_workflow()
     fmapcorr = create_fieldmapcorrection_workflow()
@@ -1161,6 +1172,16 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     wf.connect(infosource, 'subject_id', datasource, 'subject_id')
     wf.connect(infosource, 'task_id', datasource, 'task_id')
     wf.connect(subjinfo, 'run_id', datasource, 'run_id')
+
+    """
+    Run freesurfer if we want to
+    """
+    if use_fs:
+        reconall.inputs.inputspecs.subjects_dir = subjects_dir
+        wf.connect(infosource, 'subject_id',
+                   reconall, 'inputspec.subject_id')
+        wf.connect(datasource, 'anat',
+                   reconall, 'inputspec.T1_files')
 
     """
     Perform fieldmap correction
@@ -1501,6 +1522,10 @@ if __name__ == '__main__':
                         help="Plugin to use")
     parser.add_argument("--plugin_args", dest="plugin_args",
                         help="Plugin arguments")
+    parser.add_argument("--freesurfer", default=False,
+                        help="Whether to run freesurfer reconall and use it"
+                             "for registraiton",
+                        action='store_true')
     parser.add_argument("--write-graph", default="",
                         help="Do not run, just write the graph to "
                              "specified file")
@@ -1521,6 +1546,7 @@ if __name__ == '__main__':
                              output_dir=outdir,
                              hpcutoff=args.hpfilter,
                              fwhm=args.fwhm,
+                             use_fs=args.freesurfer
                              )
     # wf.config['execution']['remove_unnecessary_outputs'] = False
     wf.base_dir = work_dir
