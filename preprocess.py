@@ -140,12 +140,12 @@ def create_fieldmapcorrection_workflow(name='fmapcorrection'):
     fugue = pe.MapNode(fsl.FUGUE(),
                        iterfield=['in_file'],
                        name='fugue')
-    fmapcorrect.connect(prepare, 'out_file',
+    fmapcorrect.connect(prepare, 'out_fieldmap',
                         fugue, 'fmap_in_file')
     fmapcorrect.connect([(inputnode, fugue,
                          [('dwell_time', 'dwell_time'),
                           ('source_files', 'in_file')])
-                          ])
+                         ])
 
     """
     Connect output
