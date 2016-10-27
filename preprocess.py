@@ -749,6 +749,10 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
         Run numbers
     TR : float
         Repetition time
+    delta_TE : float
+        difference of echo times for fieldmap
+    dwell_time : float
+        Effective Echo Spacing
     """
     import os
     import re
@@ -760,6 +764,8 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
         '{0}'.format(subject_id),
         'func',
     )
+
+    subject_fmapdir = subject_funcdir.replace('func', 'fmap')
 
     # get run ids
     runs_template = os.path.join(
@@ -784,7 +790,20 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
     with open(run_jsons[0], 'rt') as f:
         dataset_info = json.load(f)
 
-    return run_ids, dataset_info['RepetitionTime']
+    # load fmap phasediff json file to compute delta TE
+    fmap_jsons = glob(
+        os.path.join(
+            subject_fmapdir,
+            '{0}_task-{1}_*run-*_phasediff.json'.format(subject_id, task_id)
+        )
+    )
+    # XXX: use only the first one atm
+    with open(fmap_jsons[0], 'rt') as f:
+        phasediff_info = json.load(f)
+    delta_TE = (phasediff_info['EchoTime1'] - phasediff_info['EchoTime2'])*1000
+
+    return run_ids, dataset_info['RepetitionTime'], delta_TE,\
+        dataset_info['EffectiveEchoSpacing']
 
 
 def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
@@ -821,6 +840,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     registration = create_registration_workflow()
     reslice_bold = create_apply_transforms_workflow()
     estimate_noise = create_estimatenoise_workflow()
+    fmapcorr = create_fieldmapcorrection_workflow()
 
     """
     Remove the plotting connection so that plot iterables don't propagate
@@ -852,7 +872,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         niu.Function(
             input_names=['subject_id', 'base_dir',
                          'task_id'],
-            output_names=['run_id', 'TR'],
+            output_names=['run_id', 'TR', 'delta_TE', 'dwell_time'],
             function=get_subjectinfo),
         name='subjectinfo')
     subjinfo.inputs.base_dir = data_dir
@@ -872,11 +892,15 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     datasource.inputs.field_template = {
         'anat': '%s/anat/%s_T1w.nii*',
         'bold': '%s/func/%s_task-%s_*run-*_bold.nii*',
+        'fmap_magnitude': '%s/fmap/%s_*run-*_magnitude*.nii*',
+        'fmap_phase': '%s/fmap/%s_*run-*_phasediff.nii*'
     }
 
     datasource.inputs.template_args = {
         'anat': [['subject_id', 'subject_id']],
         'bold': [['subject_id', 'subject_id', 'task_id']],
+        'fmap_magnitude': [['subject_id', 'subject_id']],
+        'fmap_phase': [['subject_id', 'subject_id']]
     }
 
     datasource.inputs.sort_filelist = True
@@ -890,8 +914,30 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     wf.connect(infosource, 'subject_id', datasource, 'subject_id')
     wf.connect(infosource, 'task_id', datasource, 'task_id')
     wf.connect(subjinfo, 'run_id', datasource, 'run_id')
-    # connect bold to preprocessing pipeline
-    wf.connect(datasource, 'bold', preproc, 'inputspec.func')
+
+    """
+    Perform fieldmap correction
+    """
+    # get the first magnitude only
+    def pickfirst(x):
+        return x[0]
+    wf.connect(datasource, ('fmap_magnitude', pickfirst),
+               fmapcorr, 'inputspec.magnitude_file')
+    wf.connect(datasource, 'fmap_phase',
+               fmapcorr, 'inputspec.phase_file')
+    wf.connect(subjinfo, 'delta_TE',
+               fmapcorr, 'inputspec.delta_TE')
+    wf.connect(subjinfo, 'dwell_time',
+               fmapcorr, 'intputspec.dwell_time')
+    # connect bold to fmap
+    wf.connect(datasource, 'bold', fmapcorr, 'inputspec.source_files')
+
+    """
+    Run preprocessing
+    """
+    # connect warped bold to preprocessing pipeline
+    wf.connect(fmapcorr, 'outputspec.warped_files',
+               preproc, 'inputspec.func')
 
     """
     Get highpass information for preprocessing
