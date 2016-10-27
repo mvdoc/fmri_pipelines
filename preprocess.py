@@ -1100,7 +1100,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         # create subjects dir for freesurfer
         subjects_dir = os.path.join(output_dir, 'subjects_dir')
         if not os.path.exists(subjects_dir):
-            os.mkdir(subjects_dir)
+            os.makedirs(subjects_dir)
         registration = create_freesurfer_registration_workflow()
         registration.inputs.inputspec.subjects_dir = subjects_dir
         reconall = create_reconall_workflow()
