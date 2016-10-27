@@ -429,6 +429,8 @@ def create_freesurfer_registration_workflow(name='registration'):
             registration target
         inputspec.target_image_brain :
             registration target brain
+        inputspec.subject_id :
+            subject_id
         inputspec.subjects_dir :
             freesurfer subjects directory
 
@@ -466,6 +468,7 @@ def create_freesurfer_registration_workflow(name='registration'):
                     'anatomical_image',
                     'target_image',
                     'target_image_brain',
+                    'subject_id',
                     'subjects_dir']),
         name='inputspec')
     outputnode = pe.Node(
