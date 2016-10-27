@@ -76,6 +76,86 @@ def median(in_files):
     return filename
 
 
+def create_fieldmapcorrection_workflow(name='fmapcorrection'):
+    """Create a workflow to do fieldmap correction with SIEMENS scanners
+
+    Parameters
+    ----------
+        name : name of workflow (default: 'fmapcorrection')
+
+    Inputs:
+        inputspec.source_files :
+            files (filename or list of filenames to fieldmap correct)
+        inputspec.magnitude_file :
+            file containing magnitude information
+        inputspec.phase_file :
+            file containing phase information
+        inputspec.delta_TE :
+            echo time difference of the fieldmap sequence in ms
+        inputspec.dwell_time :
+            dwell time (aka Echo Spacing)
+
+
+    Outputs:
+        outputspec.warped_files :
+            warped source files
+    """
+
+    fmapcorrect = pe.Workflow(name=name)
+
+    inputnode = pe.Node(
+        interface=niu.IdentityInterface(
+            fields=['source_files',
+                    'magnitude_file',
+                    'phase_file',
+                    'delta_TE',
+                    'dwell_time']),
+        name='inputspec')
+    outputnode = pe.Node(
+        interface=niu.IdentityInterface(
+            fields=['warped_files']),
+        name='outputspec')
+
+    """
+    Perform skullstripping on magnitude
+    """
+    bet = pe.Node(fsl.BET(), name='betfmap')
+    fmapcorrect.connect(inputnode, 'magnitude_file',
+                        bet, 'in_file')
+
+    """
+    Prepare fieldmap using fsl_prepare_fieldmap
+    """
+    prepare = pe.Node(fsl.PrepareFieldmap(), name='preparefmap')
+    fmapcorrect.connect(bet, 'out_file',
+                        prepare, 'in_magnitude')
+    fmapcorrect.connect([(inputnode, prepare),
+                         [('phase_file', 'in_phase'),
+                          ('delta_TE', 'delta_TE')]
+                         ])
+
+    """
+    Apply fieldmap correction
+    """
+    fugue = pe.MapNode(fsl.FUGUE(),
+                       iterfield=['in_file'],
+                       name='fugue')
+    fmapcorrect.connect(prepare, 'out_file',
+                        fugue, 'fmap_in_file')
+    fmapcorrect.connect([(inputnode, fugue),
+                         [('dwell_time', 'dwell_time'),
+                          ('source_files', 'in_file')]
+                         ])
+
+    """
+    Connect output
+    """
+    fmapcorrect.connect(fugue, 'warped_file',
+                        outputnode, 'warped_files')
+
+    return fmapcorrect
+
+
 def create_registration_workflow(name='registration'):
     """Create a registration workflow using ANTS
 
