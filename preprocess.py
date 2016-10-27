@@ -928,7 +928,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     wf.connect(subjinfo, 'delta_TE',
                fmapcorr, 'inputspec.delta_TE')
     wf.connect(subjinfo, 'dwell_time',
-               fmapcorr, 'intputspec.dwell_time')
+               fmapcorr, 'inputspec.dwell_time')
     # connect bold to fmap
     wf.connect(datasource, 'bold', fmapcorr, 'inputspec.source_files')
 
