@@ -1101,12 +1101,12 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         subjects_dir = os.path.join(output_dir, 'subjects_dir')
         if not os.path.exists(subjects_dir):
             os.makedirs(subjects_dir)
+        if 'SUBJECTS_DIR' not in os.environ:
+            os.environ['SUBJECTS_DIR'] = subjects_dir
         registration = create_freesurfer_registration_workflow()
         registration.inputs.inputspec.subjects_dir = subjects_dir
         reconall = create_reconall_workflow()
         reconall.inputs.inputspecs.subjects_dir = subjects_dir
-        if 'SUBJECTS_DIR' not in os.environ:
-            os.environ['SUBJECTS_DIR'] = subjects_dir
     else:
         registration = create_registration_workflow()
     reslice_bold = create_apply_transforms_workflow()
