@@ -127,8 +127,8 @@ def create_fieldmapcorrection_workflow(name='fmapcorrection'):
     Gunzip phasediff for fsl_prepare_fieldmap
     """
     gunzip = pe.Node(Gunzip(), name='gunzip')
-    fmapcorrect.connect(gunzip, 'in_file',
-                        inputnode, 'phase_file')
+    fmapcorrect.connect(inputnode, 'phase_file',
+                        gunzip, 'in_file')
 
     """
     Prepare fieldmap using fsl_prepare_fieldmap
