@@ -137,7 +137,7 @@ def create_fieldmapcorrection_workflow(name='fmapcorrection'):
     fmapcorrect.connect(bet, 'out_file',
                         prepare, 'in_magnitude')
     fmapcorrect.connect(gunzip, 'out_file',
-                        'prepare', 'in_phase')
+                        prepare, 'in_phase')
     fmapcorrect.connect(inputnode, 'delta_TE',
                         prepare, 'delta_TE')
 
