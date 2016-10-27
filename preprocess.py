@@ -97,8 +97,8 @@ def create_fieldmapcorrection_workflow(name='fmapcorrection'):
 
 
     Outputs:
-        outputspec.warped_files :
-            warped source files
+        outputspec.unwarped_files :
+            unwarped source files
     """
 
     fmapcorrect = pe.Workflow(name=name)
@@ -157,8 +157,8 @@ def create_fieldmapcorrection_workflow(name='fmapcorrection'):
     """
     Connect output
     """
-    fmapcorrect.connect(fugue, 'warped_file',
-                        outputnode, 'warped_files')
+    fmapcorrect.connect(fugue, 'unwarped_file',
+                        outputnode, 'unwarped_files')
 
     return fmapcorrect
 
@@ -943,7 +943,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     Run preprocessing
     """
     # connect warped bold to preprocessing pipeline
-    wf.connect(fmapcorr, 'outputspec.warped_files',
+    wf.connect(fmapcorr, 'outputspec.unwarped_files',
                preproc, 'inputspec.func')
 
     """
