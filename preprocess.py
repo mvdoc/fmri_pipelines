@@ -76,7 +76,7 @@ def median(in_files):
     return filename
 
 
-def create_reg_workflow(name='registration'):
+def create_registration_workflow(name='registration'):
     """Create a registration workflow using ANTS
 
     Parameters
@@ -738,7 +738,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     Load nipype workflows
     """
     preproc = create_featreg_preproc(whichvol='first')
-    registration = create_reg_workflow()
+    registration = create_registration_workflow()
     reslice_bold = create_apply_transforms_workflow()
     estimate_noise = create_estimatenoise_workflow()
 
