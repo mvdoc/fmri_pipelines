@@ -883,7 +883,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     datasource = pe.Node(
         nio.DataGrabber(
             infields=['subject_id', 'run_id', 'task_id'],
-            outfields=['anat', 'bold']),
+            outfields=['anat', 'bold', 'fmap_magnitude', 'fmap_phase']),
         name='datasource')
 
     datasource.inputs.base_directory = data_dir
