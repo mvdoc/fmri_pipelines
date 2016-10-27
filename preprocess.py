@@ -181,7 +181,7 @@ def create_registration_workflow(name='registration'):
         inputspec.target_image :
             registration target
         inputspec.target_image_brain :
-            registration target after skullstripping
+            registration target brain
 
     Outputs:
         outputspec.func2anat_transform :
@@ -428,7 +428,9 @@ def create_freesurfer_registration_workflow(name='registration'):
         inputspec.target_image :
             registration target
         inputspec.target_image_brain :
-            registration target after skullstripping
+            registration target brain
+        inputspec.subjects_dir :
+            freesurfer subjects directory
 
     Outputs:
         outputspec.func2anat_transform :
@@ -464,7 +466,7 @@ def create_freesurfer_registration_workflow(name='registration'):
                     'anatomical_image',
                     'target_image',
                     'target_image_brain',
-                    'config_file']),
+                    'subjects_dir']),
         name='inputspec')
     outputnode = pe.Node(
         interface=niu.IdentityInterface(
@@ -482,21 +484,37 @@ def create_freesurfer_registration_workflow(name='registration'):
         name='outputspec')
 
     """
-    Estimate the tissue classes from the anatomical image.
+    Get the subject's freesurfer source directory
     """
-    stripper = pe.Node(afni.SkullStrip(), name='stripper')
-    register.connect(inputnode, 'anatomical_image', stripper, 'in_file')
-    fast = pe.Node(fsl.FAST(), name='fast')
-    register.connect(stripper, 'out_file', fast, 'in_files')
+    fssource = pe.Node(FreeSurferSource(),
+                       name='fssource')
+    fssource.run_without_submitting = True
+    register.connect(inputnode, 'subject_id', fssource, 'subject_id')
+    register.connect(inputnode, 'subjects_dir', fssource, 'subjects_dir')
 
     """
-    Binarize the segmentation
+    Convert the T1 to nii
     """
+    convert2nii = pe.Node(fs.MRIConvert(out_type='nii'),
+                          name="convert2nii")
+    register.connect(fssource, 'T1', convert2nii, 'in_file')
+
+    """
+    Use brain obtained from freesurfer
+    """
+    stripper = pe.Node(fs.MRIConvert(out_type='nii'),
+                       name='stripper')
+    register.connect(fssource, 'brain', stripper, 'in_file')
+
+    """
+    Binarize the white matter segmentation from freesurfer
+    """
+    segment = pe.Node(fs.MRIConvert(out_type='nii'),
+                      name='segment')
+    register.connect(fssource, 'wm', segment, 'in_file')
     binarize = pe.Node(fsl.ImageMaths(op_string='-nan -thr 0.5 -bin'),
                        name='binarize')
-    pickindex = lambda x, i: x[i]
-    register.connect(fast, ('partial_volume_files', pickindex, 2),
-                     binarize, 'in_file')
+    register.connect(segment, 'out_file', binarize, 'in_file')
 
     """
     Calculate rigid transform from mean image to anatomical image
@@ -569,7 +587,7 @@ def create_freesurfer_registration_workflow(name='registration'):
     reg.inputs.use_histogram_matching = [False] * 2 + [True]
     reg.inputs.winsorize_lower_quantile = 0.005
     reg.inputs.winsorize_upper_quantile = 0.995
-    reg.inputs.args = '--float'
+    reg.inputs.float = True
     reg.inputs.output_warped_image = 'output_warped_image.nii.gz'
     reg.inputs.num_threads = 4
     reg.plugin_args = {'qsub_args': '-pe orte 4',
@@ -617,7 +635,7 @@ def create_freesurfer_registration_workflow(name='registration'):
     register.connect(reg, 'composite_transform', warpmask, 'transforms')
 
     """
-    Transform the segmentations to MNI
+    Transform the segmentation to MNI
     """
     warpsegment = pe.MapNode(ants.ApplyTransforms(),
                              iterfield=['input_image'],
@@ -629,7 +647,7 @@ def create_freesurfer_registration_workflow(name='registration'):
 
     register.connect(inputnode, 'target_image_brain',
                      warpsegment, 'reference_image')
-    register.connect(fast, 'partial_volume_files', warpsegment, 'input_image')
+    register.connect(segment, 'out_file', warpsegment, 'input_image')
     register.connect(merge, 'out', warpsegment, 'transforms')
 
     """
@@ -651,7 +669,7 @@ def create_freesurfer_registration_workflow(name='registration'):
                      outputnode, 'brain')
     register.connect(warpmask, 'output_image',
                      outputnode, 'mean2anat_mask_mni')
-    register.connect(fast, 'partial_volume_files',
+    register.connect(segment, 'out_file',
                      outputnode, 'anat_segmented')
     register.connect(warpsegment, 'output_image',
                      outputnode, 'anat_segmented_mni')
