@@ -814,7 +814,7 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
 
 
 def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
-                        subj_prefix='sub-*', hpcutoff=120., fwhm=6.0,
+                        hpcutoff=120., fwhm=6.0,
                         num_noise_components=5):
     """
     Preprocesses a BIDS dataset
@@ -840,6 +840,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         noise regressors
     """
 
+    subj_prefix = 'sub-*'
     """
     Load nipype workflows
     """
@@ -1237,11 +1238,11 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--datasetdir', required=True)
     parser.add_argument('-s', '--subject', default=[],
                         nargs='+', type=str,
-                        help="Subject name (e.g. 'sid00001')")
-    parser.add_argument('-x', '--subjectprefix', default='sub-',
-                        help="Subject prefix" + defstr)
-    parser.add_argument('-t', '--task', default='',
-                        type=str, help="Task name" + defstr)
+                        help="Subject(s) name (e.g. 'sub-sid000001')")
+    parser.add_argument('-t', '--task',
+                        nargs='+', type=str,
+                        help="Task(s) name (e.g., 'oddball')",
+                        required=True)
     parser.add_argument('--hpfilter', default=120., type=float,
                         help="High pass filter cutoff (in secs)" + defstr)
     parser.add_argument('--fwhm', default=6.,
@@ -1271,8 +1272,7 @@ if __name__ == '__main__':
 
     wf = preprocess_pipeline(data_dir=os.path.abspath(args.datasetdir),
                              subject=args.subject,
-                             task_id=[args.task],
-                             subj_prefix=args.subjectprefix + '*',
+                             task_id=args.task,
                              output_dir=outdir,
                              hpcutoff=args.hpfilter,
                              fwhm=args.fwhm,
