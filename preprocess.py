@@ -794,7 +794,7 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
     fmap_jsons = glob(
         os.path.join(
             subject_fmapdir,
-            '{0}_task-{1}_*run-*_phasediff.json'.format(subject_id, task_id)
+            '{0}_*run-*_phasediff.json'.format(subject_id)
         )
     )
     # XXX: use only the first one atm
