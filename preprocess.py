@@ -850,13 +850,6 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     fmapcorr = create_fieldmapcorrection_workflow()
 
     """
-    Remove the plotting connection so that plot iterables don't propagate
-    to the model stage
-    """
-    #preproc.disconnect(preproc.get_node('plot_motion'), 'out_file',
-    #                   preproc.get_node('outputspec'), 'motion_plots')
-
-    """
     Set up bids data specific components
     """
     subjects = sorted([path.split(os.path.sep)[-1] for path in
