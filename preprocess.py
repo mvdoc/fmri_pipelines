@@ -129,9 +129,9 @@ def create_fieldmapcorrection_workflow(name='fmapcorrection'):
     prepare = pe.Node(fsl.PrepareFieldmap(), name='preparefmap')
     fmapcorrect.connect(bet, 'out_file',
                         prepare, 'in_magnitude')
-    fmapcorrect.connect([(inputnode, prepare),
+    fmapcorrect.connect([(inputnode, prepare,
                          [('phase_file', 'in_phase'),
-                          ('delta_TE', 'delta_TE')]
+                          ('delta_TE', 'delta_TE')])
                          ])
 
     """
@@ -142,10 +142,10 @@ def create_fieldmapcorrection_workflow(name='fmapcorrection'):
                        name='fugue')
     fmapcorrect.connect(prepare, 'out_file',
                         fugue, 'fmap_in_file')
-    fmapcorrect.connect([(inputnode, fugue),
+    fmapcorrect.connect([(inputnode, fugue,
                          [('dwell_time', 'dwell_time'),
-                          ('source_files', 'in_file')]
-                         ])
+                          ('source_files', 'in_file')])
+                          ])
 
     """
     Connect output
