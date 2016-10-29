@@ -1106,7 +1106,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         registration = create_freesurfer_registration_workflow()
         registration.inputs.inputspec.subjects_dir = subjects_dir
         reconall = create_reconall_workflow()
-        reconall.inputs.inputspecs.subjects_dir = subjects_dir
+        reconall.inputs.inputspec.subjects_dir = subjects_dir
     else:
         registration = create_registration_workflow()
     reslice_bold = create_apply_transforms_workflow()
@@ -1183,6 +1183,8 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     Run freesurfer if we want to
     """
     if use_fs:
+        wf.connect(infosource, 'subject_id',
+                   registration, 'inputspec.subject_id')
         wf.connect(infosource, 'subject_id',
                    reconall, 'inputspec.subject_id')
         wf.connect(datasource, 'anat',
