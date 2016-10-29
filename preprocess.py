@@ -1183,7 +1183,8 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     Run freesurfer if we want to
     """
     if use_fs:
-        wf.connect(infosource, 'subject_id',
+        # use subject_id from reconall so that reconall get run first
+        wf.connect(reconall, 'postdatasink_outputspec.subject_id',
                    registration, 'inputspec.subject_id')
         wf.connect(infosource, 'subject_id',
                    reconall, 'inputspec.subject_id')
