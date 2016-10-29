@@ -919,10 +919,10 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     """
     Perform fieldmap correction
     """
-    # get the first magnitude only
-    def pickfirst(x):
-        return x[0]
-    wf.connect(datasource, ('fmap_magnitude', pickfirst),
+    # get the second magnitude only -- shorter TE
+    def picksecond(x):
+        return x[1]
+    wf.connect(datasource, ('fmap_magnitude', picksecond),
                fmapcorr, 'inputspec.magnitude_file')
     wf.connect(datasource, 'fmap_phase',
                fmapcorr, 'inputspec.phase_file')
