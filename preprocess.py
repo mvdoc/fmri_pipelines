@@ -13,7 +13,8 @@ import os
 from glob import glob
 
 from nipype import config
-config.enable_provenance()
+# config.enable_provenance()
+config.update_config({'stop_on_first_crash': True})
 import nipype.pipeline.engine as pe
 import nipype.algorithms.rapidart as ra
 from nipype.algorithms.misc import TSNR, Gunzip
@@ -1103,10 +1104,11 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
             os.makedirs(subjects_dir)
         if 'SUBJECTS_DIR' not in os.environ:
             os.environ['SUBJECTS_DIR'] = subjects_dir
-        registration = create_freesurfer_registration_workflow()
-        registration.inputs.inputspec.subjects_dir = subjects_dir
         reconall = create_reconall_workflow()
         reconall.inputs.inputspec.subjects_dir = subjects_dir
+
+        registration = create_freesurfer_registration_workflow()
+        registration.inputs.inputspec.subjects_dir = subjects_dir
     else:
         registration = create_registration_workflow()
     reslice_bold = create_apply_transforms_workflow()
@@ -1183,13 +1185,13 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     Run freesurfer if we want to
     """
     if use_fs:
-        # use subject_id from reconall so that reconall get run first
-        wf.connect(reconall, 'postdatasink_outputspec.subject_id',
-                   registration, 'inputspec.subject_id')
         wf.connect(infosource, 'subject_id',
                    reconall, 'inputspec.subject_id')
         wf.connect(datasource, 'anat',
                    reconall, 'inputspec.T1_files')
+        # use subject_id from reconall so that reconall get run first
+        wf.connect(reconall, 'postdatasink_outputspec.subject_id',
+                   registration, 'inputspec.subject_id')
 
     """
     Perform fieldmap correction
