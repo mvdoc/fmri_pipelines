@@ -1106,6 +1106,7 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
             os.environ['SUBJECTS_DIR'] = subjects_dir
         reconall = create_reconall_workflow()
         reconall.inputs.inputspec.subjects_dir = subjects_dir
+        reconall.inputs.inputspec.num_threads = 8
 
         registration = create_freesurfer_registration_workflow()
         registration.inputs.inputspec.subjects_dir = subjects_dir
