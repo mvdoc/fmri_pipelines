@@ -23,6 +23,7 @@ import nipype.interfaces.io as nio
 import nipype.interfaces.utility as niu
 from nipype.workflows.fmri.fsl import create_featreg_preproc
 from nipype.workflows.smri.freesurfer import create_reconall_workflow
+from nipype.workflows.smri.freesurfer.utils import get_aparc_aseg
 from nipype import LooseVersion
 from nipype import Workflow, Node, MapNode
 from nipype.interfaces import (fsl, Function, ants, afni)
@@ -504,47 +505,46 @@ def create_freesurfer_registration_workflow(name='registration'):
     register.connect(fssource, 'T1', convertT1, 'in_file')
 
     """
-    Use brain obtained from freesurfer
+    Coregister the median to the surface
     """
-    stripper = pe.Node(fs.MRIConvert(out_type='nii.gz'),
-                       name='stripper')
-    register.connect(fssource, 'brain', stripper, 'in_file')
+    bbregister = pe.Node(fs.BBRegister(registered_file=True),
+                         name='bbregister')
+    bbregister.inputs.init = 'fsl'
+    bbregister.inputs.contrast_type = 't2'
+    bbregister.inputs.out_fsl_file = True
+    bbregister.inputs.epi_mask = True
+    register.connect(inputnode, 'subject_id', bbregister, 'subject_id')
+    register.connect(inputnode, 'mean_image', bbregister, 'source_file')
+    register.connect(inputnode, 'subjects_dir', bbregister, 'subjects_dir')
 
     """
-    Binarize the white matter segmentation from freesurfer
+    Create a mask of the median coregistered to the anatomical image
     """
-    binarize = Node(fs.Binarize(min=0.5,
-                                out_type='nii.gz'),
-                    name='binarize_wm')
-    register.connect(fssource, 'wm', binarize, 'in_file')
+    mean2anat_mask = pe.Node(fsl.BET(mask=True), name='mean2anat_mask')
+    register.connect(bbregister, 'registered_file', mean2anat_mask, 'in_file')
 
     """
-    Calculate rigid transform from mean image to anatomical image
+    Use aparc+aseg's brain mask
     """
-    mean2anat = pe.Node(fsl.FLIRT(), name='mean2anat')
-    mean2anat.inputs.dof = 6
-    register.connect(inputnode, 'mean_image', mean2anat, 'in_file')
-    register.connect(stripper, 'out_file', mean2anat, 'reference')
+    binarize = pe.Node(fs.Binarize(min=0.5, out_type='nii.gz', dilate=1),
+                       name="binarize_aparc")
+    register.connect(fssource, ("aparc_aseg", get_aparc_aseg),
+                     binarize, "in_file")
+    # apply mask
+    stripper = pe.Node(fsl.ApplyMask(), name='stripper')
+    register.connect(binarize, "binary_file", stripper, "mask_file")
+    register.connect(convertT1, 'out_file', stripper, 'in_file')
 
     """
-    Now use bbr cost function to improve the transform
+    Apply inverse transform to aparc file
     """
-    mean2anatbbr = pe.Node(fsl.FLIRT(), name='mean2anatbbr')
-    mean2anatbbr.inputs.dof = 6
-    mean2anatbbr.inputs.cost = 'bbr'
-    mean2anatbbr.inputs.schedule = os.path.join(os.getenv('FSLDIR'),
-                                                'etc/flirtsch/bbr.sch')
-    register.connect(inputnode, 'mean_image', mean2anatbbr, 'in_file')
-    register.connect(binarize, 'out_file', mean2anatbbr, 'wm_seg')
-    register.connect(convertT1, 'out_file', mean2anatbbr, 'reference')
-    register.connect(mean2anat, 'out_matrix_file',
-                     mean2anatbbr, 'in_matrix_file')
-
-    """
-    Create a mask of the median image coregistered to the anatomical image
-    """
-    mean2anat_mask = Node(fsl.BET(mask=True), name='mean2anat_mask')
-    register.connect(mean2anatbbr, 'out_file', mean2anat_mask, 'in_file')
+    aparcxfm = Node(fs.ApplyVolTransform(inverse=True, interp='nearest'),
+                    name='aparc_inverse_transform')
+    register.connect(inputnode, 'subjects_dir', aparcxfm, 'subjects_dir')
+    register.connect(bbregister, 'out_reg_file', aparcxfm, 'reg_file')
+    register.connect(fssource, ('aparc_aseg', get_aparc_aseg),
+                     aparcxfm, 'target_file')
+    register.connect(inputnode, 'mean_image', aparcxfm, 'source_file')
 
     """
     Convert the BBRegister transformation to ANTS ITK format
@@ -553,8 +553,7 @@ def create_freesurfer_registration_workflow(name='registration'):
                           name='convert2itk')
     convert2itk.inputs.fsl2ras = True
     convert2itk.inputs.itk_transform = True
-    register.connect(mean2anatbbr, 'out_matrix_file',
-                     convert2itk, 'transform_file')
+    register.connect(bbregister, 'out_fsl_file', convert2itk, 'transform_file')
     register.connect(inputnode, 'mean_image', convert2itk, 'source_file')
     register.connect(stripper, 'out_file', convert2itk, 'reference_file')
 
