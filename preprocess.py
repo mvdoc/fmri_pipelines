@@ -636,7 +636,17 @@ def create_freesurfer_registration_workflow(name='registration'):
     register.connect(reg, 'composite_transform', warpmask, 'transforms')
 
     """
-    Transform the segmentation to MNI
+    Obtain WM + Ventricles segmentation
+    """
+    segment = pe.Node(fs.Binarize(wm_ven_csf=True,
+                                  wm=True,
+                                  ventricles=True),
+                      name='fsl_wm+csf_segment')
+    register.connect(fssource, ('aparc_aseg', get_aparc_aseg),
+                     segment, 'in_file')
+
+    """
+    Warp segmentation into MNI
     """
     warpsegment = pe.MapNode(ants.ApplyTransforms(),
                              iterfield=['input_image'],
@@ -648,20 +658,21 @@ def create_freesurfer_registration_workflow(name='registration'):
 
     register.connect(inputnode, 'target_image_brain',
                      warpsegment, 'reference_image')
-    register.connect(binarize, 'out_file', warpsegment, 'input_image')
+    register.connect(segment, 'binary_file', warpsegment, 'input_image')
     register.connect(merge, 'out', warpsegment, 'transforms')
 
     """
     Assign all the output files
     """
+    #XXX: fix output
     register.connect(reg, 'warped_image',
                      outputnode, 'anat2target')
     register.connect(reg, 'composite_transform',
                      outputnode, 'anat2target_transform')
     register.connect(warpmean, 'output_image',
                      outputnode, 'transformed_mean')
-    register.connect(mean2anatbbr, 'out_matrix_file',
-                     outputnode, 'func2anat_transform')
+    #register.connect(mean2anatbbr, 'out_matrix_file',
+    #                 outputnode, 'func2anat_transform')
     register.connect(merge, 'out',
                      outputnode, 'func2target_transforms')
     register.connect(mean2anat_mask, 'mask_file',
@@ -670,7 +681,7 @@ def create_freesurfer_registration_workflow(name='registration'):
                      outputnode, 'brain')
     register.connect(warpmask, 'output_image',
                      outputnode, 'mean2anat_mask_mni')
-    register.connect(binarize, 'out_file',
+    register.connect(segment, 'binary_file',
                      outputnode, 'anat_segmented')
     register.connect(warpsegment, 'output_image',
                      outputnode, 'anat_segmented_mni')
