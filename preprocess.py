@@ -497,28 +497,26 @@ def create_freesurfer_registration_workflow(name='registration'):
     register.connect(inputnode, 'subjects_dir', fssource, 'subjects_dir')
 
     """
-    Convert the T1 to nii
+    Get the T1 from freesurfer after their normalization
     """
-    convert2nii = pe.Node(fs.MRIConvert(out_type='nii'),
-                          name="convert2nii")
-    register.connect(fssource, 'T1', convert2nii, 'in_file')
+    convertT1 = pe.Node(fs.MRIConvert(out_type='nii.gz',
+                                      name='convertT1'))
+    register.connect(fssource, 'T1', convertT1, 'in_file')
 
     """
     Use brain obtained from freesurfer
     """
-    stripper = pe.Node(fs.MRIConvert(out_type='nii'),
+    stripper = pe.Node(fs.MRIConvert(out_type='nii.gz'),
                        name='stripper')
     register.connect(fssource, 'brain', stripper, 'in_file')
 
     """
     Binarize the white matter segmentation from freesurfer
     """
-    segment = pe.Node(fs.MRIConvert(out_type='nii'),
-                      name='segment')
-    register.connect(fssource, 'wm', segment, 'in_file')
-    binarize = pe.Node(fsl.ImageMaths(op_string='-nan -thr 0.5 -bin'),
-                       name='binarize')
-    register.connect(segment, 'out_file', binarize, 'in_file')
+    binarize = Node(fs.Binarize(min=0.5,
+                                out_type='nii.gz'),
+                    name='binarize_wm')
+    register.connect(fssource, 'wm', binarize, 'in_file')
 
     """
     Calculate rigid transform from mean image to anatomical image
@@ -538,7 +536,7 @@ def create_freesurfer_registration_workflow(name='registration'):
                                                 'etc/flirtsch/bbr.sch')
     register.connect(inputnode, 'mean_image', mean2anatbbr, 'in_file')
     register.connect(binarize, 'out_file', mean2anatbbr, 'wm_seg')
-    register.connect(inputnode, 'anatomical_image', mean2anatbbr, 'reference')
+    register.connect(convertT1, 'out_file', mean2anatbbr, 'reference')
     register.connect(mean2anat, 'out_matrix_file',
                      mean2anatbbr, 'in_matrix_file')
 
@@ -651,7 +649,7 @@ def create_freesurfer_registration_workflow(name='registration'):
 
     register.connect(inputnode, 'target_image_brain',
                      warpsegment, 'reference_image')
-    register.connect(segment, 'out_file', warpsegment, 'input_image')
+    register.connect(binarize, 'out_file', warpsegment, 'input_image')
     register.connect(merge, 'out', warpsegment, 'transforms')
 
     """
@@ -673,7 +671,7 @@ def create_freesurfer_registration_workflow(name='registration'):
                      outputnode, 'brain')
     register.connect(warpmask, 'output_image',
                      outputnode, 'mean2anat_mask_mni')
-    register.connect(segment, 'out_file',
+    register.connect(binarize, 'out_file',
                      outputnode, 'anat_segmented')
     register.connect(warpsegment, 'output_image',
                      outputnode, 'anat_segmented_mni')
