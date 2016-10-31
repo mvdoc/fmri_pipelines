@@ -94,6 +94,8 @@ def create_fieldmapcorrection_workflow(name='fmapcorrection'):
             echo time difference of the fieldmap sequence in ms
         inputspec.dwell_time :
             dwell time (aka Echo Spacing) in s
+        inputspec.unwarp_direction :
+            unwarping direction for fugue
 
 
     Outputs:
@@ -109,7 +111,8 @@ def create_fieldmapcorrection_workflow(name='fmapcorrection'):
                     'magnitude_file',
                     'phase_file',
                     'delta_TE',
-                    'dwell_time']),
+                    'dwell_time',
+                    'unwarp_direction']),
         name='inputspec')
     outputnode = pe.Node(
         interface=niu.IdentityInterface(
@@ -147,11 +150,18 @@ def create_fieldmapcorrection_workflow(name='fmapcorrection'):
     fugue = pe.MapNode(fsl.FUGUE(),
                        iterfield=['in_file'],
                        name='fugue')
+
+    # TODO: maybe add them as inputspec for workflow
+    fugue.inputs.inputspec.median_2dfilter = True
+    fugue.inputs.inputspec.despike_2dfilter = True
+    fugue.inputs.inputspec.smooth3d = 3.
+
     fmapcorrect.connect(prepare, 'out_fieldmap',
                         fugue, 'fmap_in_file')
     fmapcorrect.connect([(inputnode, fugue,
                          [('dwell_time', 'dwell_time'),
-                          ('source_files', 'in_file')])
+                          ('source_files', 'in_file'),
+                          ('unwarp_direction', 'unwarp_direction')])
                          ])
 
     """
@@ -760,6 +770,9 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
         difference of echo times for fieldmap
     dwell_time : float
         Effective Echo Spacing
+    phase_encoding_direction : str
+        Phase Encoding Direction of the EPI sequence
+        (it assumes all run have the same)
     """
     import os
     import re
@@ -809,8 +822,9 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
         phasediff_info = json.load(f)
     delta_TE = (phasediff_info['EchoTime1'] - phasediff_info['EchoTime2'])*1000
 
-    return run_ids, dataset_info['RepetitionTime'], delta_TE,\
-        dataset_info['EffectiveEchoSpacing']
+    return run_ids, dataset_info['RepetitionTime'], \
+        delta_TE, dataset_info['EffectiveEchoSpacing'], \
+        dataset_info['PhaseEncodingDirection']
 
 
 def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
@@ -922,6 +936,17 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     # get the second magnitude only -- shorter TE
     def picksecond(x):
         return x[1]
+
+    # mapper from bids to fsl
+    def ijk2xyz(unwarpdir):
+        mapper = {'i': 'x',
+                  'j': 'y',
+                  'k': 'z',
+                  'i-': 'x-',
+                  'j-': 'j-',
+                  'k-': 'z-'}
+        return mapper[unwarpdir]
+
     wf.connect(datasource, ('fmap_magnitude', picksecond),
                fmapcorr, 'inputspec.magnitude_file')
     wf.connect(datasource, 'fmap_phase',
@@ -930,6 +955,8 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
                fmapcorr, 'inputspec.delta_TE')
     wf.connect(subjinfo, 'dwell_time',
                fmapcorr, 'inputspec.dwell_time')
+    wf.connect(subjinfo, ('unwarp_direction', ijk2xyz),
+               fmapcorr, 'inputspec.unwarp_direction')
     # connect bold to fmap
     wf.connect(datasource, 'bold', fmapcorr, 'inputspec.source_files')
 
