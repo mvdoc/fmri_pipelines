@@ -13,7 +13,8 @@ import os
 from glob import glob
 
 from nipype import config
-config.enable_provenance()
+# config.enable_provenance()
+config.update_config({'stop_on_first_crash': True})
 import nipype.pipeline.engine as pe
 import nipype.algorithms.rapidart as ra
 from nipype.algorithms.misc import TSNR, Gunzip
@@ -21,6 +22,8 @@ from nipype.interfaces.c3 import C3dAffineTool
 import nipype.interfaces.io as nio
 import nipype.interfaces.utility as niu
 from nipype.workflows.fmri.fsl import create_featreg_preproc
+from nipype.workflows.smri.freesurfer import create_reconall_workflow
+from nipype.workflows.smri.freesurfer.utils import get_aparc_aseg
 from nipype import LooseVersion
 from nipype import Workflow, Node, MapNode
 from nipype.interfaces import (fsl, Function, ants, afni)
@@ -190,9 +193,7 @@ def create_registration_workflow(name='registration'):
         inputspec.target_image :
             registration target
         inputspec.target_image_brain :
-            registration target after skullstripping
-        inputspec.config_file :
-            config file for FSL registration
+            registration target brain
 
     Outputs:
         outputspec.func2anat_transform :
@@ -228,7 +229,7 @@ def create_registration_workflow(name='registration'):
                     'anatomical_image',
                     'target_image',
                     'target_image_brain',
-                    'config_file']),
+                    ]),
         name='inputspec')
     outputnode = pe.Node(
         interface=niu.IdentityInterface(
@@ -364,22 +365,6 @@ def create_registration_workflow(name='registration'):
     register.connect(merge, 'out', warpmean, 'transforms')
 
     """
-    Transform the remaining images. First to anatomical and then to target
-    """
-#    warpall = pe.MapNode(ants.ApplyTransforms(),
-#                         iterfield=['input_image'],
-#                         name='warpall')
-#    warpall.inputs.input_image_type = 0
-#    warpall.inputs.interpolation = 'Linear'
-#    warpall.inputs.invert_transform_flags = [False, False]
-#    warpall.inputs.terminal_output = 'file'
-#
-#    register.connect(inputnode, 'target_image_brain',
-#                     warpall, 'reference_image')
-#    register.connect(inputnode, 'source_files', warpall, 'input_image')
-#    register.connect(merge, 'out', warpall, 'transforms')
-
-    """
     Transform the mask from subject space to MNI
     """
     warpmask = pe.Node(ants.ApplyTransforms(),
@@ -421,8 +406,6 @@ def create_registration_workflow(name='registration'):
                      outputnode, 'anat2target_transform')
     register.connect(warpmean, 'output_image',
                      outputnode, 'transformed_mean')
-    #register.connect(warpall, 'output_image',
-    #                 outputnode, 'transformed_files')
     register.connect(mean2anatbbr, 'out_matrix_file',
                      outputnode, 'func2anat_transform')
     register.connect(merge, 'out',
@@ -434,6 +417,287 @@ def create_registration_workflow(name='registration'):
     register.connect(warpmask, 'output_image',
                      outputnode, 'mean2anat_mask_mni')
     register.connect(fast, 'partial_volume_files',
+                     outputnode, 'anat_segmented')
+    register.connect(warpsegment, 'output_image',
+                     outputnode, 'anat_segmented_mni')
+    return register
+
+
+def create_freesurfer_registration_workflow(name='registration'):
+    """Create a registration workflow using freesurfer and ANTS.
+
+    Parameters
+    ----------
+        name : name of workflow (default: 'registration')
+
+    Inputs:
+        inputspec.source_files :
+            files (filename or list of filenames to register)
+        inputspec.mean_image :
+            reference image to use
+        inputspec.anatomical_image :
+            anatomical image to coregister to
+        inputspec.target_image :
+            registration target
+        inputspec.target_image_brain :
+            registration target brain
+        inputspec.subject_id :
+            subject_id
+        inputspec.subjects_dir :
+            freesurfer subjects directory
+
+    Outputs:
+        outputspec.func2anat_transform :
+            FLIRT transform
+        outputspec.anat2target_transform :
+            FNIRT transform
+        outputspec.func2target_transform :
+            FLIRT+FNIRT transform
+        outputspec.transformed_files :
+            transformed files in target space
+        outputspec.transformed_mean :
+            mean image in target space
+        outputspec.anat2target :
+            warped anatomical_image to target_image
+        outputspec.mean2anat_mask :
+            mask of the median EPI
+        outputspec.mean2anat_mask_mni :
+            mask of the median EPI in mni
+        outputspec.brain :
+            brain
+        outputspec.anat_segmented :
+            segmentation of the anatomical
+        outputspec.anat_segmented_mni :
+            segmentation of the anatomical in MNI
+    """
+
+    register = pe.Workflow(name=name)
+
+    inputnode = pe.Node(
+        interface=niu.IdentityInterface(
+            fields=['source_files',
+                    'mean_image',
+                    'anatomical_image',
+                    'target_image',
+                    'target_image_brain',
+                    'subject_id',
+                    'subjects_dir']),
+        name='inputspec')
+    outputnode = pe.Node(
+        interface=niu.IdentityInterface(
+            fields=['func2anat_transform',
+                    'anat2target_transform',
+                    'func2target_transforms',
+                    'transformed_files',
+                    'transformed_mean',
+                    'anat2target',
+                    'mean2anat_mask',
+                    'mean2anat_mask_mni',
+                    'brain',
+                    'anat_segmented',
+                    'anat_segmented_mni']),
+        name='outputspec')
+
+    """
+    Get the subject's freesurfer source directory
+    """
+    fssource = pe.Node(FreeSurferSource(),
+                       name='fssource')
+    fssource.run_without_submitting = True
+    register.connect(inputnode, 'subject_id', fssource, 'subject_id')
+    register.connect(inputnode, 'subjects_dir', fssource, 'subjects_dir')
+
+    """
+    Get the T1 from freesurfer after their normalization
+    """
+    convertT1 = pe.Node(fs.MRIConvert(out_type='nii'),
+                                      name='convertT1')
+    register.connect(fssource, 'T1', convertT1, 'in_file')
+
+    """
+    Coregister the median to the surface
+    """
+    bbregister = pe.Node(fs.BBRegister(registered_file=True),
+                         name='bbregister')
+    bbregister.inputs.init = 'fsl'
+    bbregister.inputs.contrast_type = 't2'
+    bbregister.inputs.out_fsl_file = True
+    bbregister.inputs.epi_mask = True
+    register.connect(inputnode, 'subject_id', bbregister, 'subject_id')
+    register.connect(inputnode, 'mean_image', bbregister, 'source_file')
+    register.connect(inputnode, 'subjects_dir', bbregister, 'subjects_dir')
+
+    """
+    Create a mask of the median coregistered to the anatomical image
+    """
+    mean2anat_mask = pe.Node(fsl.BET(mask=True), name='mean2anat_mask')
+    register.connect(bbregister, 'registered_file', mean2anat_mask, 'in_file')
+
+    """
+    Use aparc+aseg's brain mask
+    """
+    binarize = pe.Node(fs.Binarize(min=0.5, out_type='nii.gz', dilate=1),
+                       name="binarize_aparc")
+    register.connect(fssource, ("aparc_aseg", get_aparc_aseg),
+                     binarize, "in_file")
+    # apply mask
+    stripper = pe.Node(fsl.ApplyMask(), name='stripper')
+    register.connect(binarize, "binary_file", stripper, "mask_file")
+    register.connect(convertT1, 'out_file', stripper, 'in_file')
+
+    """
+    Apply inverse transform to aparc file
+    """
+    aparcxfm = Node(fs.ApplyVolTransform(inverse=True, interp='nearest'),
+                    name='aparc_inverse_transform')
+    register.connect(inputnode, 'subjects_dir', aparcxfm, 'subjects_dir')
+    register.connect(bbregister, 'out_reg_file', aparcxfm, 'reg_file')
+    register.connect(fssource, ('aparc_aseg', get_aparc_aseg),
+                     aparcxfm, 'target_file')
+    register.connect(inputnode, 'mean_image', aparcxfm, 'source_file')
+
+    """
+    Convert the BBRegister transformation to ANTS ITK format
+    """
+    convert2itk = pe.Node(C3dAffineTool(),
+                          name='convert2itk')
+    convert2itk.inputs.fsl2ras = True
+    convert2itk.inputs.itk_transform = True
+    register.connect(bbregister, 'out_fsl_file', convert2itk, 'transform_file')
+    register.connect(inputnode, 'mean_image', convert2itk, 'source_file')
+    register.connect(stripper, 'out_file', convert2itk, 'reference_file')
+
+    """
+    Compute registration between the subject's structural and MNI template
+    This is currently set to perform a very quick registration. However, the
+    registration can be made significantly more accurate for cortical
+    structures by increasing the number of iterations
+    All parameters are set using the example from:
+    #https://github.com/stnava/ANTs/blob/master/Scripts/newAntsExample.sh
+    """
+    reg = pe.Node(ants.Registration(), name='antsRegister')
+    reg.inputs.output_transform_prefix = "output_"
+    reg.inputs.transforms = ['Rigid', 'Affine', 'SyN']
+    reg.inputs.transform_parameters = [(0.1,), (0.1,), (0.2, 3.0, 0.0)]
+    reg.inputs.number_of_iterations = [[10000, 11110, 11110]] * 2 + [[100, 30, 20]]
+    reg.inputs.dimension = 3
+    reg.inputs.write_composite_transform = True
+    reg.inputs.collapse_output_transforms = True
+    reg.inputs.initial_moving_transform_com = True
+    reg.inputs.metric = ['Mattes'] * 2 + [['Mattes', 'CC']]
+    reg.inputs.metric_weight = [1] * 2 + [[0.5, 0.5]]
+    reg.inputs.radius_or_number_of_bins = [32] * 2 + [[32, 4]]
+    reg.inputs.sampling_strategy = ['Regular'] * 2 + [[None, None]]
+    reg.inputs.sampling_percentage = [0.3] * 2 + [[None, None]]
+    reg.inputs.convergence_threshold = [1.e-8] * 2 + [-0.01]
+    reg.inputs.convergence_window_size = [20] * 2 + [5]
+    reg.inputs.smoothing_sigmas = [[4, 2, 1]] * 2 + [[1, 0.5, 0]]
+    reg.inputs.sigma_units = ['vox'] * 3
+    reg.inputs.shrink_factors = [[3, 2, 1]]*2 + [[4, 2, 1]]
+    reg.inputs.use_estimate_learning_rate_once = [True] * 3
+    reg.inputs.use_histogram_matching = [False] * 2 + [True]
+    reg.inputs.winsorize_lower_quantile = 0.005
+    reg.inputs.winsorize_upper_quantile = 0.995
+    reg.inputs.float = True
+    reg.inputs.output_warped_image = 'output_warped_image.nii.gz'
+    reg.inputs.num_threads = 4
+    reg.plugin_args = {'qsub_args': '-pe orte 4',
+                       'sbatch_args': '--mem=6G -c 4'}
+    register.connect(stripper, 'out_file', reg, 'moving_image')
+    register.connect(inputnode, 'target_image_brain', reg, 'fixed_image')
+
+    """
+    Concatenate the affine and ants transforms into a list
+    """
+    merge = pe.Node(niu.Merge(2), iterfield=['in2'], name='mergexfm')
+    register.connect(convert2itk, 'itk_transform', merge, 'in2')
+    register.connect(reg, 'composite_transform', merge, 'in1')
+
+    """
+    Transform the mean image. First to anatomical and then to target
+    """
+    warpmean = pe.Node(ants.ApplyTransforms(),
+                       name='warpmean')
+    warpmean.inputs.input_image_type = 0
+    warpmean.inputs.interpolation = 'Linear'
+    warpmean.inputs.invert_transform_flags = [False, False]
+    warpmean.inputs.terminal_output = 'file'
+
+    register.connect(inputnode, 'target_image_brain',
+                     warpmean, 'reference_image')
+    register.connect(inputnode, 'mean_image', warpmean, 'input_image')
+    register.connect(merge, 'out', warpmean, 'transforms')
+
+    """
+    Transform the mask from subject space to MNI
+    """
+    warpmask = pe.Node(ants.ApplyTransforms(),
+                       name='warpmask')
+    warpmask.inputs.input_image_type = 0
+    warpmask.inputs.interpolation = 'Linear'
+    warpmask.inputs.invert_transform_flags = [False]
+    warpmask.inputs.terminal_output = 'file'
+
+    register.connect(inputnode, 'target_image_brain',
+                     warpmask, 'reference_image')
+    register.connect(mean2anat_mask, 'mask_file', warpmask, 'input_image')
+    # apply only the ANTS transformation since the mask is already in
+    # subject's space after BBR
+    register.connect(reg, 'composite_transform', warpmask, 'transforms')
+
+    """
+    Obtain WM + Ventricles segmentation
+    """
+    segment = pe.Node(fs.Binarize(wm_ven_csf=True,
+                                  wm=True,
+                                  ventricles=True,
+                                  erode=1),
+                      name='fsl_wmcsf_segment')
+    register.connect(fssource, ('aparc_aseg', get_aparc_aseg),
+                     segment, 'in_file')
+    # convert to nifti
+    convertsegment = pe.Node(fs.MRIConvert(out_type='nii.gz'),
+                             name='convertsegment')
+    register.connect(segment, 'binary_file',
+                     convertsegment, 'in_file')
+
+    """
+    Warp segmentation into MNI
+    """
+    warpsegment = pe.MapNode(ants.ApplyTransforms(),
+                             iterfield=['input_image'],
+                             name='warpsegment')
+    warpsegment.inputs.input_image_type = 0
+    warpsegment.inputs.interpolation = 'Linear'
+    warpsegment.inputs.invert_transform_flags = [False, False]
+    warpsegment.inputs.terminal_output = 'file'
+
+    register.connect(inputnode, 'target_image_brain',
+                     warpsegment, 'reference_image')
+    register.connect(convertsegment, 'out_file', warpsegment, 'input_image')
+    register.connect(merge, 'out', warpsegment, 'transforms')
+
+    """
+    Assign all the output files
+    """
+    #XXX: fix output
+    register.connect(reg, 'warped_image',
+                     outputnode, 'anat2target')
+    register.connect(reg, 'composite_transform',
+                     outputnode, 'anat2target_transform')
+    register.connect(warpmean, 'output_image',
+                     outputnode, 'transformed_mean')
+    #register.connect(mean2anatbbr, 'out_matrix_file',
+    #                 outputnode, 'func2anat_transform')
+    register.connect(merge, 'out',
+                     outputnode, 'func2target_transforms')
+    register.connect(mean2anat_mask, 'mask_file',
+                     outputnode, 'mean2anat_mask')
+    register.connect(stripper, 'out_file',
+                     outputnode, 'brain')
+    register.connect(warpmask, 'output_image',
+                     outputnode, 'mean2anat_mask_mni')
+    register.connect(convertsegment, 'out_file',
                      outputnode, 'anat_segmented')
     register.connect(warpsegment, 'output_image',
                      outputnode, 'anat_segmented_mni')
@@ -829,7 +1093,8 @@ def get_subjectinfo(subject_id, base_dir, task_id, session_id=''):
 
 def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
                         hpcutoff=120., fwhm=6.0,
-                        num_noise_components=5):
+                        num_noise_components=5,
+                        use_fs=False):
     """
     Preprocesses a BIDS dataset
 
@@ -844,7 +1109,6 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         Task to process
     output_dir : str
         Output directory
-    subj_prefix : str
     hpcutoff : float
         high pass cutoff in seconds
     fwhm : float
@@ -852,6 +1116,8 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     num_noise_components : int
         number of PCs of timeseries in ventricles to output as additional
         noise regressors
+    use_fs : bool
+        whether to use freesurfer for registration and run recon-all
     """
 
     subj_prefix = 'sub-*'
@@ -859,7 +1125,21 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     Load nipype workflows
     """
     preproc = create_featreg_preproc(whichvol='first')
-    registration = create_registration_workflow()
+    if use_fs:
+        # create subjects dir for freesurfer
+        subjects_dir = os.path.join(output_dir, 'subjects_dir')
+        if not os.path.exists(subjects_dir):
+            os.makedirs(subjects_dir)
+        if 'SUBJECTS_DIR' not in os.environ:
+            os.environ['SUBJECTS_DIR'] = subjects_dir
+        reconall = create_reconall_workflow()
+        reconall.inputs.inputspec.subjects_dir = subjects_dir
+        reconall.inputs.inputspec.num_threads = 8
+
+        registration = create_freesurfer_registration_workflow()
+        registration.inputs.inputspec.subjects_dir = subjects_dir
+    else:
+        registration = create_registration_workflow()
     reslice_bold = create_apply_transforms_workflow()
     estimate_noise = create_estimatenoise_workflow()
     fmapcorr = create_fieldmapcorrection_workflow()
@@ -929,6 +1209,18 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
     wf.connect(infosource, 'subject_id', datasource, 'subject_id')
     wf.connect(infosource, 'task_id', datasource, 'task_id')
     wf.connect(subjinfo, 'run_id', datasource, 'run_id')
+
+    """
+    Run freesurfer if we want to
+    """
+    if use_fs:
+        wf.connect(infosource, 'subject_id',
+                   reconall, 'inputspec.subject_id')
+        wf.connect(datasource, 'anat',
+                   reconall, 'inputspec.T1_files')
+        # use subject_id from reconall so that reconall get run first
+        wf.connect(reconall, 'postdatasink_outputspec.subject_id',
+                   registration, 'inputspec.subject_id')
 
     """
     Perform fieldmap correction
@@ -1027,7 +1319,6 @@ def preprocess_pipeline(data_dir, subject=None, task_id=None, output_dir=None,
         fsl.Info.standard_image('MNI152_T1_2mm.nii.gz')
     registration.inputs.inputspec.target_image_brain = \
         fsl.Info.standard_image('MNI152_T1_2mm_brain.nii.gz')
-    registration.inputs.inputspec.config_file = 'T1_2_MNI152_2mm'
     # Use median tSNR image as mean_image for registration
     wf.connect(calc_median, 'median_file',
                registration, 'inputspec.mean_image')
@@ -1283,6 +1574,10 @@ if __name__ == '__main__':
                         help="Plugin to use")
     parser.add_argument("--plugin_args", dest="plugin_args",
                         help="Plugin arguments")
+    parser.add_argument("--freesurfer", default=False,
+                        help="Whether to run freesurfer reconall and use it"
+                             "for registraiton",
+                        action='store_true')
     parser.add_argument("--write-graph", default="",
                         help="Do not run, just write the graph to "
                              "specified file")
@@ -1303,6 +1598,7 @@ if __name__ == '__main__':
                              output_dir=outdir,
                              hpcutoff=args.hpfilter,
                              fwhm=args.fwhm,
+                             use_fs=args.freesurfer
                              )
     # wf.config['execution']['remove_unnecessary_outputs'] = False
     wf.base_dir = work_dir
