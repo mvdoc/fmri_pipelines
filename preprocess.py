@@ -640,10 +640,16 @@ def create_freesurfer_registration_workflow(name='registration'):
     """
     segment = pe.Node(fs.Binarize(wm_ven_csf=True,
                                   wm=True,
-                                  ventricles=True),
+                                  ventricles=True,
+                                  erode=1),
                       name='fsl_wm+csf_segment')
     register.connect(fssource, ('aparc_aseg', get_aparc_aseg),
                      segment, 'in_file')
+    # convert to nifti
+    convertsegment = pe.Node(fs.MRIConvert(out_type='nii.gz'),
+                             name='convertsegment')
+    register.connect(segment, 'binary_file',
+                     convertsegment, 'in_file')
 
     """
     Warp segmentation into MNI
@@ -658,7 +664,7 @@ def create_freesurfer_registration_workflow(name='registration'):
 
     register.connect(inputnode, 'target_image_brain',
                      warpsegment, 'reference_image')
-    register.connect(segment, 'binary_file', warpsegment, 'input_image')
+    register.connect(convertsegment, 'out_file', warpsegment, 'input_image')
     register.connect(merge, 'out', warpsegment, 'transforms')
 
     """
