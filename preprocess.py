@@ -687,7 +687,7 @@ def create_freesurfer_registration_workflow(name='registration'):
                      outputnode, 'brain')
     register.connect(warpmask, 'output_image',
                      outputnode, 'mean2anat_mask_mni')
-    register.connect(segment, 'binary_file',
+    register.connect(convertsegment, 'out_file',
                      outputnode, 'anat_segmented')
     register.connect(warpsegment, 'output_image',
                      outputnode, 'anat_segmented_mni')
