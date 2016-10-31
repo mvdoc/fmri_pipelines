@@ -641,7 +641,7 @@ def create_freesurfer_registration_workflow(name='registration'):
     segment = pe.Node(fs.Binarize(wm_ven_csf=True,
                                   wm=True,
                                   ventricles=True),
-                      name='fsl_wm+csf_segment')
+                      name='fsl_wmcsf_segment')
     register.connect(fssource, ('aparc_aseg', get_aparc_aseg),
                      segment, 'in_file')
 
