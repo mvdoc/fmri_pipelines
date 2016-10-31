@@ -510,7 +510,7 @@ def create_freesurfer_registration_workflow(name='registration'):
     """
     Get the T1 from freesurfer after their normalization
     """
-    convertT1 = pe.Node(fs.MRIConvert(out_type='nii'),
+    convertT1 = pe.Node(fs.MRIConvert(out_type='niigz'),
                                       name='convertT1')
     register.connect(fssource, 'T1', convertT1, 'in_file')
 
@@ -656,7 +656,7 @@ def create_freesurfer_registration_workflow(name='registration'):
     register.connect(fssource, ('aparc_aseg', get_aparc_aseg),
                      segment, 'in_file')
     # convert to nifti
-    convertsegment = pe.Node(fs.MRIConvert(out_type='nii.gz'),
+    convertsegment = pe.Node(fs.MRIConvert(out_type='niigz'),
                              name='convertsegment')
     register.connect(segment, 'binary_file',
                      convertsegment, 'in_file')
